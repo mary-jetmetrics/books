@@ -31,7 +31,8 @@ const pad = n => String(n).padStart(2, '0');
 const NOW = new Date(), THIS_YEAR = String(NOW.getFullYear()), THIS_MONTH = `${THIS_YEAR}-${pad(NOW.getMonth() + 1)}`;
 // month — «ГГГГ-ММ», а у старых книг без записанного месяца — только «ГГГГ» (рукописные списки 2018, часть Notion)
 const yearOnly = ym => !!ym && ym.length === 4;
-const monLabel = ym => !ym ? '' : yearOnly(ym) ? ym : `${MON[+ym.slice(5, 7) - 1]}${ym.slice(0, 4) !== THIS_YEAR ? ' ' + ym.slice(0, 4) : ''}`;
+// без месяца: в году — прочерк (Мария, 12.10.26), за всё время — год
+const monLabel = ym => !ym ? '' : yearOnly(ym) ? (UI.year === 'all' ? ym : '—') : `${MON[+ym.slice(5, 7) - 1]}${ym.slice(0, 4) !== THIS_YEAR ? ' ' + ym.slice(0, 4) : ''}`;
 const b64enc = str => { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
 const b64dec = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), c => c.charCodeAt(0)));
 const WAVE = '<svg class="ls-wave" viewBox="0 0 190 8" aria-hidden="true"><path d="M1 4 Q 6 0 11 4 T 21 4 T 31 4 T 41 4 T 51 4 T 61 4 T 71 4 T 81 4 T 91 4 T 101 4 T 111 4 T 121 4 T 131 4 T 141 4 T 151 4 T 161 4 T 171 4 T 181 4"/></svg>';
@@ -158,10 +159,8 @@ function statsBlock(list) {
 function chartBlock(list) {
   if (!list.length) return '';
   const all = UI.year === 'all';
-  // за год книги без месяца в столбики не попадают — их число подписью под графиком
-  const noMon = all ? 0 : list.filter(b => yearOnly(b.month)).length;
-  const noMonCap = noMon ? `<p class="cap">${noMon === list.length ? `Месяцы за ${UI.year} не записаны — все ${books(noMon)} без месяца.` : `Ещё ${books(noMon)} — месяц не записан.`}</p>` : '';
-  if (noMon === list.length) return `<section class="ls-block"><h2 class="ls-h">По месяцам</h2>${noMonCap}</section>`;
+  // за год книги без месяца в столбики не попадают; год совсем без месяцев (2018) — без графика
+  if (!all && list.every(b => yearOnly(b.month))) return '';
   const cols = all
     ? (() => { const ys = list.map(b => +b.month.slice(0, 4)), lo = Math.min(...ys), hi = Math.max(...ys);   // все годы подряд: пустой год (2023) — видимый пропуск
         return Array.from({ length: hi - lo + 1 }, (_, i) => String(lo + i)).map(y => ({ key: y, label: all && hi - lo > 6 ? `’${y.slice(2)}` : y })); })()
@@ -187,7 +186,7 @@ function chartBlock(list) {
   const used = FMTS.filter(([f]) => list.some(b => (b.format || 'audio') === f));
   return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">${all ? 'По годам' : 'По месяцам'}</h2>
     <div class="legend">${used.map(([f, l]) => `<span><i class="sq" style="--g:var(--t-${f})"></i>${l}</span>`).join('')}</div></div>
-    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Книги ${all ? 'по годам' : 'по месяцам'}">${g}</svg></div>${noMonCap}</section>`;
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Книги ${all ? 'по годам' : 'по месяцам'}">${g}</svg></div></section>`;
 }
 
 function topBlock(list) {
