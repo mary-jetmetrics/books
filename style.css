@@ -77,18 +77,19 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 .row .name { font-size: 15px; line-height: 20px; }
 .row .meta { display: flex; align-items: center; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 .row .mon { font-size: 12.5px; line-height: 16px; color: var(--ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.rate { display: inline-block; min-width: 30px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-sm); font-size: 14px; line-height: 20px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
-.rate.r-good { background: var(--salad); border-color: rgba(19, 133, 64, .35); }
-.rate.r-mid { background: var(--lemon); border-color: rgba(33, 28, 28, .14); }
-.rate.r-bad { background: var(--rose); border-color: rgba(212, 67, 58, .35); }
-.rate.none { font-weight: 400; color: var(--ink-muted); }
+/* оценка — «тихая плашка» (Мария, 12.10.26): пастель без рамки, цифра обычной толщины */
+.rate { display: inline-block; min-width: 24px; padding: 0 4px; border-radius: var(--radius-sm); font-size: 13px; line-height: 20px; font-weight: 400; text-align: center; font-variant-numeric: tabular-nums; }
+.rate.r-good { background: var(--salad); }
+.rate.r-mid { background: var(--lemon); }
+.rate.r-bad { background: var(--rose); }
+.rate.none { color: var(--ink-muted); }
 
 /* «Все книги»: формат, язык, месяц и оценка — столбцами одной ширины; на телефоне — второй строкой под названием */
-.row.bk { grid-template-columns: minmax(0, 1fr) 60px 44px var(--mon-w, 64px) 32px; }
+.row.bk { grid-template-columns: minmax(0, 1fr) 60px 44px var(--mon-w, 64px) 28px; }
 .row.bk > .tag { justify-self: stretch; text-align: center; padding: 0; }
-.row.bk > .rate { justify-self: stretch; padding: 0; }
+.row.bk > .rate { justify-self: start; }
 @media (max-width: 559px) {
-  .row.bk { grid-template-columns: 60px 44px var(--mon-w, 64px) 32px minmax(0, 1fr); }
+  .row.bk { grid-template-columns: 60px 44px var(--mon-w, 64px) 28px minmax(0, 1fr); }
   .row.bk > .t { grid-column: 1 / -1; }
 }
 .row.static { cursor: default; }
@@ -104,9 +105,9 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 
 /* лучшие */
 .top { display: grid; }
-.top div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--space-2); padding-block: var(--space-2); border-bottom: 1px solid var(--line); align-items: center; }
+.top div { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--space-2); padding-block: var(--space-2); border-bottom: 1px solid var(--line); align-items: center; }
 .top div:last-child { border-bottom: 0; }
-.top .rate { justify-self: stretch; padding: 0; }
+.top .rate { justify-self: start; }
 
 /* кнопки */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg); font-size: 14px; line-height: 20px; white-space: nowrap; }

@@ -29,7 +29,9 @@ const books = n => `${n} ${plural(n, 'книга', 'книги', 'книг')}`;
 const dec = (v, d = 1) => v.toFixed(d).replace('.', ',');
 const pad = n => String(n).padStart(2, '0');
 const NOW = new Date(), THIS_YEAR = String(NOW.getFullYear()), THIS_MONTH = `${THIS_YEAR}-${pad(NOW.getMonth() + 1)}`;
-const monLabel = ym => ym ? `${MON[+ym.slice(5, 7) - 1]}${ym.slice(0, 4) !== THIS_YEAR ? ' ' + ym.slice(0, 4) : ''}` : '';
+// month — «ГГГГ-ММ», а у старых книг без записанного месяца — только «ГГГГ» (рукописные списки 2018, часть Notion)
+const yearOnly = ym => !!ym && ym.length === 4;
+const monLabel = ym => !ym ? '' : yearOnly(ym) ? ym : `${MON[+ym.slice(5, 7) - 1]}${ym.slice(0, 4) !== THIS_YEAR ? ' ' + ym.slice(0, 4) : ''}`;
 const b64enc = str => { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
 const b64dec = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), c => c.charCodeAt(0)));
 const WAVE = '<svg class="ls-wave" viewBox="0 0 190 8" aria-hidden="true"><path d="M1 4 Q 6 0 11 4 T 21 4 T 31 4 T 41 4 T 51 4 T 61 4 T 71 4 T 81 4 T 91 4 T 101 4 T 111 4 T 121 4 T 131 4 T 141 4 T 151 4 T 161 4 T 171 4 T 181 4"/></svg>';
@@ -134,7 +136,7 @@ function monthsIn(list) {
   if (UI.year !== 'all') return 12;
   const first = list.map(b => b.month).filter(Boolean).sort()[0];
   if (!first) return 1;
-  return (NOW.getFullYear() - +first.slice(0, 4)) * 12 + NOW.getMonth() - (+first.slice(5, 7) - 1) + 1;
+  return (NOW.getFullYear() - +first.slice(0, 4)) * 12 + NOW.getMonth() - (yearOnly(first) ? 0 : +first.slice(5, 7) - 1) + 1;
 }
 function statsBlock(list) {
   const n = list.length;
@@ -156,6 +158,10 @@ function statsBlock(list) {
 function chartBlock(list) {
   if (!list.length) return '';
   const all = UI.year === 'all';
+  // за год книги без месяца в столбики не попадают — их число подписью под графиком
+  const noMon = all ? 0 : list.filter(b => yearOnly(b.month)).length;
+  const noMonCap = noMon ? `<p class="cap">${noMon === list.length ? `Месяцы за ${UI.year} не записаны — все ${books(noMon)} без месяца.` : `Ещё ${books(noMon)} — месяц не записан.`}</p>` : '';
+  if (noMon === list.length) return `<section class="ls-block"><h2 class="ls-h">По месяцам</h2>${noMonCap}</section>`;
   const cols = all
     ? [...new Set(list.map(b => b.month.slice(0, 4)))].sort().map(y => ({ key: y, label: y }))
     : MON_S.map((l, i) => ({ key: `${UI.year}-${pad(i + 1)}`, label: l }));
@@ -180,7 +186,7 @@ function chartBlock(list) {
   const used = FMTS.filter(([f]) => list.some(b => (b.format || 'audio') === f));
   return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">${all ? 'По годам' : 'По месяцам'}</h2>
     <div class="legend">${used.map(([f, l]) => `<span><i class="sq" style="--g:var(--t-${f})"></i>${l}</span>`).join('')}</div></div>
-    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Книги ${all ? 'по годам' : 'по месяцам'}">${g}</svg></div></section>`;
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Книги ${all ? 'по годам' : 'по месяцам'}">${g}</svg></div>${noMonCap}</section>`;
 }
 
 function topBlock(list) {
@@ -310,7 +316,7 @@ function bookForm(mode, b) {
     ${names ? `<label class="f cap">Название<input type="text" name="title" required value="${esc(b.title || '')}" autocomplete="off"></label>
       <label class="f cap">Автор<input type="text" name="author" value="${esc(b.author || '')}" autocomplete="off"></label>` : ''}
     ${fmt ? `<span class="cap">Формат</span>${opts('format', FMTS, b.format || 'audio')}<span class="cap">Язык</span>${opts('lang', LANGS, b.lang || 'ru')}` : ''}
-    ${read ? `<label class="f cap">Когда дочитала<input type="month" name="month" required value="${b.month || THIS_MONTH}" max="${THIS_MONTH}"></label>
+    ${read ? `<label class="f cap">Когда дочитала${yearOnly(b.month) ? ` (записан только год, ${b.month} — можно оставить пустым)` : ''}<input type="month" name="month" ${yearOnly(b.month) ? '' : 'required'} value="${yearOnly(b.month) ? '' : b.month || THIS_MONTH}" max="${THIS_MONTH}"></label>
       <span class="cap">Оценка из 10</span>${opts('rating', Array.from({ length: 10 }, (_, i) => [i + 1, i + 1]), b.rating || '', true)}` : ''}
     <div class="acts"><button class="btn main" type="submit">${mode === 'finish' ? 'Дочитала' : 'Сохранить'}</button>
       <button class="btn" type="button" data-act="cancel">Отмена</button>
@@ -323,7 +329,7 @@ function saveForm(f) {
   if (fd.has('title')) { b.title = val('title'); b.author = val('author'); }
   if (fd.has('format')) { b.format = val('format'); b.lang = val('lang'); }
   if (mode === 'finish') b.status = 'read';
-  if (fd.has('month')) { b.month = val('month'); b.rating = +val('rating') || null; }
+  if (fd.has('month')) { b.month = val('month') || (yearOnly(b.month) ? b.month : ''); b.rating = +val('rating') || null; }
   if (!b.title) return;
   upsert(b);
   UI.form = null; UI.confirm = null;
