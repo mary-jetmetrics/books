@@ -147,7 +147,7 @@ function statsBlock(list) {
   return `<div class="stats">
     <div class="ls-block ls-stat"><span class="cap">${UI.year === 'all' ? 'Прочитано за всё время' : `Прочитано за ${UI.year}`}</span><b>${books(n)}</b>
       <span class="cap sub">в среднем ${dec(n / monthsIn(list))} в месяц</span></div>
-    <div class="ls-block ls-stat"><span class="cap">Средняя оценка</span><b>${avg ? dec(avg) : '—'}<small class="cap"> из 10</small></b>
+    <div class="ls-block ls-stat"><span class="cap">Средняя оценка</span><b>${avg ? `${dec(avg)}<small class="cap"> из 10</small>` : '—'}</b>
       <span class="cap sub">${best ? `лучшая — «${esc(best.title)}», ${best.rating}` : ''}</span></div>
     <div class="ls-block ls-stat"><span class="cap">Аудиокниги</span><b>${Math.round(audio / n * 100)}%</b>
       <span class="cap sub">${audio} из ${n}</span></div>
@@ -163,7 +163,8 @@ function chartBlock(list) {
   const noMonCap = noMon ? `<p class="cap">${noMon === list.length ? `Месяцы за ${UI.year} не записаны — все ${books(noMon)} без месяца.` : `Ещё ${books(noMon)} — месяц не записан.`}</p>` : '';
   if (noMon === list.length) return `<section class="ls-block"><h2 class="ls-h">По месяцам</h2>${noMonCap}</section>`;
   const cols = all
-    ? [...new Set(list.map(b => b.month.slice(0, 4)))].sort().map(y => ({ key: y, label: y }))
+    ? (() => { const ys = list.map(b => +b.month.slice(0, 4)), lo = Math.min(...ys), hi = Math.max(...ys);   // все годы подряд: пустой год (2023) — видимый пропуск
+        return Array.from({ length: hi - lo + 1 }, (_, i) => String(lo + i)).map(y => ({ key: y, label: all && hi - lo > 6 ? `’${y.slice(2)}` : y })); })()
     : MON_S.map((l, i) => ({ key: `${UI.year}-${pad(i + 1)}`, label: l }));
   const val = (c, f) => list.filter(b => (all ? b.month.slice(0, 4) : b.month) === c.key && (b.format || 'audio') === f).length;
   const totals = cols.map(c => FMTS.reduce((s, [f]) => s + val(c, f), 0));
