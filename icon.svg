@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+<rect width="180" height="180" fill="#ffecd7"/>
+<g transform="rotate(0 90 136)"><rect x="22" y="120" width="136" height="32" rx="5" fill="#ffffff" stroke="#211c1c" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/><line x1="36" y1="120" x2="36" y2="152" stroke="#211c1c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/></g>
+<g transform="rotate(0 95 100)"><rect x="36" y="84" width="118" height="32" rx="5" fill="#ffffff" stroke="#211c1c" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/><line x1="50" y1="84" x2="50" y2="116" stroke="#211c1c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/></g>
+<g transform="rotate(-5 86 64)"><rect x="28" y="48" width="116" height="32" rx="5" fill="#ffffff" stroke="#211c1c" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/><line x1="42" y1="48" x2="42" y2="80" stroke="#211c1c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/></g>
+<g transform="rotate(-5 86 64)"><path d="M54 64 Q 57 59 60 64 T 66 64 T 72 64 T 78 64 T 84 64 T 90 64 T 96 64 T 102 64 T 108 64 T 114 64 T 120 64 T 126 64 T 132 64" fill="none" stroke="#e0679a" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/></g>
+</svg>
