@@ -195,6 +195,14 @@ const SORTS = [['month', 'по дате'], ['rating', 'по оценке'], ['ti
 const rateTone = r => r >= 8 ? 'good' : r >= 4 ? 'mid' : 'bad';
 const rateTag = r => r ? `<span class="rate r-${rateTone(r)}" title="${r} из 10">${r}</span>` : '<span class="rate none">—</span>';
 const LANG_S = { ru: 'рус', en: 'англ' };
+const FMT_S = { audio: 'аудио', paper: 'бумага', ebook: 'электр.' };   // в столбце «Всех книг» — коротко, чтобы плашки были узкими
+// ширина столбца месяца — по самой длинной подписи в списке: тогда шаг между столбцами везде одинаковый и оценка не отрывается
+let measureCtx = null;
+function monWidth(list) {
+  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+  measureCtx.font = '12.5px "Golos Text", system-ui, sans-serif';
+  return Math.ceil(Math.max(40, ...list.map(b => measureCtx.measureText(monLabel(b.month)).width)) + 4);
+}
 let LAST = [];   // книги, по которым сейчас ищет поиск «Всех книг»
 function allBlock(list) {
   LAST = list;
@@ -202,7 +210,7 @@ function allBlock(list) {
       <button class="btn small" data-act="add-read">+ Прочитанная книга</button></div>
     <input class="search" id="all-q" type="search" placeholder="Найти книгу или автора" value="${esc(UI.aq)}" autocomplete="off">
     <div class="sort">${SORTS.map(([k, l]) => `<button data-act="sort" data-v="${k}" aria-pressed="${UI.sort === k}">${l}</button>`).join('')}</div>
-    <div class="list" id="all-list">${allRows(list)}</div></section>`;
+    <div class="list" id="all-list" style="--mon-w:${monWidth(list)}px">${allRows(list)}</div></section>`;
 }
 // строка книги: название и автор, дальше столбцы одной ширины — формат, язык, месяц, оценка (Мария, 12.10.26: «чтобы не прыгали»)
 function allRows(list) {
@@ -215,7 +223,7 @@ function allRows(list) {
       const open = UI.form && UI.form.mode === 'edit' && UI.form.id === b.id;
       return `<button class="row bk" data-act="open" data-id="${b.id}" aria-expanded="${open}">
         <span class="t"><span class="name">${esc(b.title)}</span><span class="cap">${esc(b.author)}</span></span>
-        <span class="tag t-${b.format || 'audio'}">${FMT[b.format] || 'аудио'}</span><span class="tag white">${LANG_S[b.lang] || 'рус'}</span>
+        <span class="tag t-${b.format || 'audio'}" title="${FMT[b.format] || 'аудио'}">${FMT_S[b.format] || 'аудио'}</span><span class="tag white">${LANG_S[b.lang] || 'рус'}</span>
         <span class="mon">${monLabel(b.month)}</span>${rateTag(b.rating)}</button>
         ${open ? bookForm('edit', b) : ''}`;
     }).join('') || `<p class="empty">${q ? 'Ничего не нашлось.' : 'Пока пусто.'}</p>`);

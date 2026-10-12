@@ -84,11 +84,11 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 .rate.none { font-weight: 400; color: var(--ink-muted); }
 
 /* «Все книги»: формат, язык, месяц и оценка — столбцами одной ширины; на телефоне — второй строкой под названием */
-.row.bk { grid-template-columns: minmax(0, 1fr) 96px 44px 104px 32px; }
-.row.bk > .tag { justify-self: stretch; text-align: center; }
+.row.bk { grid-template-columns: minmax(0, 1fr) 60px 44px var(--mon-w, 64px) 32px; }
+.row.bk > .tag { justify-self: stretch; text-align: center; padding: 0; }
 .row.bk > .rate { justify-self: stretch; padding: 0; }
 @media (max-width: 559px) {
-  .row.bk { grid-template-columns: 96px 44px minmax(0, 1fr) 32px; }
+  .row.bk { grid-template-columns: 60px 44px var(--mon-w, 64px) 32px minmax(0, 1fr); }
   .row.bk > .t { grid-column: 1 / -1; }
 }
 .row.static { cursor: default; }
