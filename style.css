@@ -104,9 +104,9 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 
 /* лучшие */
 .top { display: grid; }
-.top div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--space-2); padding-block: var(--space-2); border-bottom: 1px solid var(--line); align-items: baseline; }
+.top div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--space-2); padding-block: var(--space-2); border-bottom: 1px solid var(--line); align-items: center; }
 .top div:last-child { border-bottom: 0; }
-.top .rate { text-align: left; }
+.top .rate { justify-self: stretch; padding: 0; }
 
 /* кнопки */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg); font-size: 14px; line-height: 20px; white-space: nowrap; }
