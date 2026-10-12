@@ -25,7 +25,6 @@ const FMT = Object.fromEntries(FMTS);
 const LANGS = [['ru', 'русский'], ['en', 'английский']];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const plural = (n, a, b, c) => { const m = n % 100, k = n % 10; return (m > 10 && m < 20) ? c : k === 1 ? a : (k >= 2 && k <= 4) ? b : c; };
-const books = n => `${n} ${plural(n, 'книга', 'книги', 'книг')}`;
 const dec = (v, d = 1) => v.toFixed(d).replace('.', ',');
 const pad = n => String(n).padStart(2, '0');
 const NOW = new Date(), THIS_YEAR = String(NOW.getFullYear()), THIS_MONTH = `${THIS_YEAR}-${pad(NOW.getMonth() + 1)}`;
@@ -131,27 +130,31 @@ function nowBlock() {
     ${UI.form && UI.form.id === b.id && ['finish', 'edit'].includes(UI.form.mode) ? bookForm(UI.form.mode, b) : ''}`).join('')}</section>`;
 }
 
-// сколько месяцев в периоде: за текущий год — прошедшие месяцы, за прошлый — 12, за всё время — от первой книги до сегодня
-function monthsIn(list) {
-  if (UI.year === THIS_YEAR) return NOW.getMonth() + 1;
-  if (UI.year !== 'all') return 12;
-  const first = list.map(b => b.month).filter(Boolean).sort()[0];
-  if (!first) return 1;
-  return (NOW.getFullYear() - +first.slice(0, 4)) * 12 + NOW.getMonth() - (yearOnly(first) ? 0 : +first.slice(5, 7) - 1) + 1;
-}
+// плашки статистики — вариант «С рисунком» (Мария, 12.10.26): цифра шрифтом заголовков, под ней маленькая картинка —
+// книги по годам (за всё время) или месяцам, разброс оценок 1–10 цветом шкалы, доли форматов полосой
 function statsBlock(list) {
   const n = list.length;
   if (!n) return `<section class="ls-block"><p class="empty">${UI.year === 'all' ? 'Прочитанных книг пока нет.' : `В ${UI.year} году книг пока нет.`}</p></section>`;
+  const all = UI.year === 'all';
   const rated = list.filter(b => b.rating), avg = rated.length ? rated.reduce((s, b) => s + b.rating, 0) / rated.length : null;
-  const best = rated.slice().sort((a, b) => b.rating - a.rating || (b.month || '').localeCompare(a.month || ''))[0];
-  const audio = list.filter(b => (b.format || 'audio') === 'audio').length;
+  const cnt = f => list.filter(b => (b.format || 'audio') === f).length, audio = cnt('audio'), pct = Math.round(audio / n * 100);
+  const mini = (cols, cls) => { const mx = Math.max(1, ...cols.map(c => c.v));
+    return `<div class="mini">${cols.map(c => `<span title="${c.t}: ${c.v}"><i class="${cls ? cls(c) : ''}" style="height:${c.v ? Math.max(2, Math.round(c.v / mx * 28)) : 2}px"></i><em>${c.l}</em></span>`).join('')}</div>`; };
+  let per;
+  if (all) {
+    const ys = list.map(b => +b.month.slice(0, 4)), lo = Math.min(...ys), hi = Math.max(...ys);
+    per = Array.from({ length: hi - lo + 1 }, (_, i) => { const y = String(lo + i); return { t: y, l: hi - lo > 6 ? `’${y.slice(2)}` : y, v: list.filter(b => b.month.startsWith(y)).length }; });
+  } else per = list.some(b => !yearOnly(b.month)) ? MON.map((m, i) => ({ t: m, l: m[0], v: list.filter(b => b.month === `${UI.year}-${pad(i + 1)}`).length })) : null;
+  const dist = Array.from({ length: 10 }, (_, i) => ({ t: `оценка ${i + 1}`, l: i + 1, r: i + 1, v: rated.filter(b => b.rating === i + 1).length }));
+  const parts = FMTS.map(([f, l]) => ({ f, l: f === 'ebook' ? 'электронные' : l, v: cnt(f) })).filter(x => x.v);
   return `<div class="stats">
-    <div class="ls-block ls-stat"><span class="cap">${UI.year === 'all' ? 'Прочитано за всё время' : `Прочитано за ${UI.year}`}</span><b>${books(n)}</b>
-      <span class="cap sub">в среднем ${dec(n / monthsIn(list))} в месяц</span></div>
-    <div class="ls-block ls-stat"><span class="cap">Средняя оценка</span><b>${avg ? `${dec(avg)}<small class="cap"> из 10</small>` : '—'}</b>
-      <span class="cap sub">${best ? `лучшая — «${esc(best.title)}», ${best.rating}` : ''}</span></div>
-    <div class="ls-block ls-stat"><span class="cap">Аудиокниги</span><b>${Math.round(audio / n * 100)}%</b>
-      <span class="cap sub">${audio} из ${n}</span></div>
+    <div class="ls-block ls-stat"><span class="cap">${all ? 'Прочитано за всё время' : `Прочитано за ${UI.year}`}</span>
+      <span class="num">${n}<span class="u">${plural(n, 'книга', 'книги', 'книг')}</span></span>${per ? mini(per) : ''}</div>
+    <div class="ls-block ls-stat"><span class="cap">Средняя оценка</span>
+      <span class="num">${avg ? `${dec(avg)}<span class="u">из 10</span>` : '—'}</span>${rated.length ? mini(dist, c => `r-${rateTone(c.r)}`) : ''}</div>
+    <div class="ls-block ls-stat"><span class="cap">Аудиокниги</span><span class="num">${pct}<span class="pc">%</span></span>
+      <div class="split">${parts.map(x => `<i style="width:${x.v / n * 100}%;background:var(--t-${x.f})"></i>`).join('')}</div>
+      <span class="cap">${parts.map(x => `${x.l} ${x.v}`).join(' · ')}</span></div>
   </div>`;
 }
 

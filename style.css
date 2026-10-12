@@ -44,12 +44,22 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 .filters button[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); background: var(--surface); }
 
 /* Stat */
-.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.stats > :first-child { grid-column: 1 / -1; }
-@media (min-width: 640px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .stats > :first-child { grid-column: auto; } }
-.ls-stat { display: flex; flex-direction: column; gap: 2px; }
-.ls-stat b { font-size: 28px; line-height: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.ls-stat .sub { margin-top: var(--space-1); }
+.stats { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+@media (min-width: 640px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ls-stat { display: flex; flex-direction: column; gap: var(--space-1); }
+/* цифра — шрифтом заголовков, обычной толщины; подпись рядом мельче */
+.ls-stat .num { font-family: var(--font-display); font-weight: 400; font-size: 40px; line-height: 44px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.ls-stat .num .u { font-family: var(--font-body); font-size: 14px; letter-spacing: 0; color: var(--ink-muted); margin-left: 6px; }
+.ls-stat .num .pc { font-size: .62em; margin-left: 2px; }
+/* маленькие столбики под цифрой */
+.mini { display: flex; align-items: flex-end; gap: 3px; height: 44px; margin-top: 6px; }
+.mini > span { flex: 1; display: grid; justify-items: center; align-content: end; gap: 3px; min-width: 0; }
+.mini i { display: block; width: 100%; max-width: 14px; border-radius: 2px; background: var(--t-paper); box-shadow: inset 0 0 0 1px var(--bar-line); }
+.mini i.r-good { background: var(--salad); } .mini i.r-mid { background: var(--lemon); } .mini i.r-bad { background: var(--rose); }
+.mini em { font-style: normal; font-size: 10px; line-height: 12px; color: var(--ink-muted); white-space: nowrap; }
+/* доли форматов полосой */
+.split { display: flex; height: 10px; border-radius: 3px; overflow: hidden; margin: 14px 0 2px; box-shadow: inset 0 0 0 1px var(--bar-line); }
+.split i { display: block; }
 
 /* график по месяцам */
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
