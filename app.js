@@ -14,7 +14,7 @@ let TOKEN = LS.get('bk-token') || LS.get('trips-token');
 let D = null, SHA = null;                       // books.json и sha его версии
 let saving = false, dirty = false, saveTimer = null, net = 'ok';
 // form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
-const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, sort: 'month', form: null, confirm: null, bbc: false, q: '' };
+const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', aq: '' };
 const root = document.getElementById('root');
 
 /* ---------- общее ---------- */
@@ -141,15 +141,14 @@ function statsBlock(list) {
   if (!n) return `<section class="ls-block"><p class="empty">${UI.year === 'all' ? 'Прочитанных книг пока нет.' : `В ${UI.year} году книг пока нет.`}</p></section>`;
   const rated = list.filter(b => b.rating), avg = rated.length ? rated.reduce((s, b) => s + b.rating, 0) / rated.length : null;
   const best = rated.slice().sort((a, b) => b.rating - a.rating || (b.month || '').localeCompare(a.month || ''))[0];
-  const cnt = f => list.filter(b => b.format === f).length, en = list.filter(b => b.lang === 'en').length;
-  const other = FMTS.filter(([f]) => f !== 'audio' && cnt(f)).map(([f, l]) => `${l} ${cnt(f)}`);
+  const audio = list.filter(b => (b.format || 'audio') === 'audio').length;
   return `<div class="stats">
     <div class="ls-block ls-stat"><span class="cap">${UI.year === 'all' ? 'Прочитано за всё время' : `Прочитано за ${UI.year}`}</span><b>${books(n)}</b>
       <span class="cap sub">в среднем ${dec(n / monthsIn(list))} в месяц</span></div>
     <div class="ls-block ls-stat"><span class="cap">Средняя оценка</span><b>${avg ? dec(avg) : '—'}<small class="cap"> из 10</small></b>
       <span class="cap sub">${best ? `лучшая — «${esc(best.title)}», ${best.rating}` : ''}</span></div>
-    <div class="ls-block ls-stat"><span class="cap">Аудиокниги</span><b>${cnt('audio')} из ${n}</b>
-      <span class="cap sub">${[...other, en ? `на английском ${en}` : ''].filter(Boolean).join(' · ') || 'все на русском'}</span></div>
+    <div class="ls-block ls-stat"><span class="cap">Аудиокниги</span><b>${Math.round(audio / n * 100)}%</b>
+      <span class="cap sub">${audio} из ${n}</span></div>
   </div>`;
 }
 
@@ -188,34 +187,53 @@ function topBlock(list) {
   const top = list.filter(b => b.rating).sort((a, b) => b.rating - a.rating || (b.month || '').localeCompare(a.month || '')).slice(0, 5);
   if (top.length < 3) return '';
   return `<section class="ls-block"><h2 class="ls-h">Лучшие</h2><div class="top">${top.map(b =>
-    `<div><span class="rate">${b.rating}</span><span>${esc(b.title)} <span class="cap">${esc(b.author)}</span></span></div>`).join('')}</div></section>`;
+    `<div>${rateTag(b.rating)}<span>${esc(b.title)} <span class="cap">${esc(b.author)}</span></span></div>`).join('')}</div></section>`;
 }
 
 const SORTS = [['month', 'по дате'], ['rating', 'по оценке'], ['title', 'по названию']];
+// оценка цветом — та же шкала из 10, что у мест и еды в «Поездках» (Мария, 12.10.26): от 8 — зелёный, 4–7 — жёлтый, ниже 4 — красный
+const rateTone = r => r >= 8 ? 'good' : r >= 4 ? 'mid' : 'bad';
+const rateTag = r => r ? `<span class="rate r-${rateTone(r)}" title="${r} из 10">${r}</span>` : '<span class="rate none">—</span>';
+const LANG_S = { ru: 'рус', en: 'англ' };
+let LAST = [];   // книги, по которым сейчас ищет поиск «Всех книг»
 function allBlock(list) {
-  const s = list.slice().sort(UI.sort === 'rating' ? (a, b) => (b.rating || 0) - (a.rating || 0) || (b.month || '').localeCompare(a.month || '')
+  LAST = list;
+  return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">Все книги</h2>
+      <button class="btn small" data-act="add-read">+ Прочитанная книга</button></div>
+    <input class="search" id="all-q" type="search" placeholder="Найти книгу или автора" value="${esc(UI.aq)}" autocomplete="off">
+    <div class="sort">${SORTS.map(([k, l]) => `<button data-act="sort" data-v="${k}" aria-pressed="${UI.sort === k}">${l}</button>`).join('')}</div>
+    <div class="list" id="all-list">${allRows(list)}</div></section>`;
+}
+// строка книги: название и автор, дальше столбцы одной ширины — формат, язык, месяц, оценка (Мария, 12.10.26: «чтобы не прыгали»)
+function allRows(list) {
+  const q = norm(UI.aq);
+  const s = list.filter(b => !q || norm(b.title + ' ' + b.author).includes(q)).slice().sort(UI.sort === 'rating' ? (a, b) => (b.rating || 0) - (a.rating || 0) || (b.month || '').localeCompare(a.month || '')
     : UI.sort === 'title' ? (a, b) => a.title.localeCompare(b.title, 'ru')
     : (a, b) => (b.month || '').localeCompare(a.month || '') || (b.at || 0) - (a.at || 0));
   const adding = UI.form && UI.form.mode === 'add-read';
-  return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">Все книги</h2>
-      <button class="btn small" data-act="add-read">+ Прочитанная книга</button></div>
-    <div class="sort">${SORTS.map(([k, l]) => `<button data-act="sort" data-v="${k}" aria-pressed="${UI.sort === k}">${l}</button>`).join('')}</div>
-    <div class="list">${adding ? bookForm('add-read', {}) : ''}${s.map(b => {
+  return (adding ? bookForm('add-read', {}) : '') + (s.map(b => {
       const open = UI.form && UI.form.mode === 'edit' && UI.form.id === b.id;
-      return `<button class="row" data-act="open" data-id="${b.id}" aria-expanded="${open}">
+      return `<button class="row bk" data-act="open" data-id="${b.id}" aria-expanded="${open}">
         <span class="t"><span class="name">${esc(b.title)}</span><span class="cap">${esc(b.author)}</span></span>
-        <span class="meta"><span class="tag t-${b.format || 'audio'}">${FMT[b.format] || 'аудио'}</span>${b.lang === 'en' ? '<span class="tag white">англ</span>' : ''}
-          <span class="mon">${monLabel(b.month)}</span><span class="rate">${b.rating || '—'}</span></span></button>
+        <span class="tag t-${b.format || 'audio'}">${FMT[b.format] || 'аудио'}</span><span class="tag white">${LANG_S[b.lang] || 'рус'}</span>
+        <span class="mon">${monLabel(b.month)}</span>${rateTag(b.rating)}</button>
         ${open ? bookForm('edit', b) : ''}`;
-    }).join('') || '<p class="empty">Пока пусто.</p>'}</div></section>`;
+    }).join('') || `<p class="empty">${q ? 'Ничего не нашлось.' : 'Пока пусто.'}</p>`);
 }
 
 /* ---------- планы ---------- */
 const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'.,:;!?()\-–—]/g, ' ').replace(/\s+/g, ' ').trim();
 // книга из справочника уже есть у Марии: одно название содержит другое (не короче 5 букв)
-function mine(title) {
-  const t = norm(title);
-  return live().find(b => { const m = norm(b.title); return m.length >= 5 && t.length >= 5 && (t.includes(m) || m.includes(t)); });
+// с автором (ВШЭ): ещё и общая фамилия — там много «Рассказов», «Лирики» и коротких названий («Мы», «Нос»), их сверяем целиком
+const surnames = a => norm(a).split(' ').filter(w => w.length > 2);
+function mine(title, author) {
+  const t = norm(title), as = author ? surnames(author) : null;
+  return live().find(b => {
+    const m = norm(b.title);
+    if (!as) return m.length >= 5 && t.length >= 5 && (t.includes(m) || m.includes(t));
+    if (!(m === t || (m.length >= 5 && t.length >= 5 && (t.includes(m) || m.includes(t))))) return false;
+    return !b.author || surnames(b.author).some(w => as.includes(w));
+  });
 }
 const STATE = { read: 'прочитано', reading: 'читаю', plan: 'в планах' };
 
@@ -228,17 +246,38 @@ function planView() {
       const f = UI.form && UI.form.id === b.id ? UI.form.mode : null;
       return `<button class="row" data-act="popen" data-id="${b.id}" aria-expanded="${!!f}">
         <span class="t"><span class="name">${esc(b.title)}</span>${b.author ? `<span class="cap">${esc(b.author)}</span>` : ''}</span>
-        <span class="meta">${b.src === 'bbc' ? '<span class="tag white">BBC</span>' : ''}</span></button>
+        <span class="meta">${b.src === 'bbc' ? '<span class="tag white">BBC</span>' : b.src === 'hse' ? '<span class="tag white">ВШЭ</span>' : ''}</span></button>
         ${f === 'pact' ? `<div class="pacts"><button class="btn small main" data-act="start" data-id="${b.id}">Начинаю читать</button>
           <button class="btn small" data-act="finish" data-id="${b.id}">Уже прочитала</button>
           <button class="btn small" data-act="edit" data-id="${b.id}">Править</button>
           <button class="link del" data-act="del" data-id="${b.id}">${UI.confirm === b.id ? 'Точно убрать?' : 'Убрать'}</button></div>` : ''}
         ${f === 'finish' || f === 'edit' ? bookForm(f, b) : ''}`;
-    }).join('') || '<p class="empty">Планов пока нет. Добавь книгу или возьми из списка BBC ниже.</p>'}</div></section>
+    }).join('') || '<p class="empty">Планов пока нет. Добавь книгу или возьми из списков ниже.</p>'}</div></section>
     <section class="ls-block"><button class="sec-head" data-act="bbc" aria-expanded="${UI.bbc}">
         <h2 class="ls-h">Топ-200 BBC</h2><span class="cap">справочник · ${BBC.length}</span><span class="chev">${UI.bbc ? '−' : '+'}</span></button>
       ${UI.bbc ? `<input class="search" id="bbc-q" type="search" placeholder="Найти в списке" value="${esc(UI.q)}" autocomplete="off">
-        <div class="list" id="bbc-list">${bbcRows()}</div>` : ''}</section>`;
+        <div class="list" id="bbc-list">${bbcRows()}</div>` : ''}</section>
+    <section class="ls-block"><button class="sec-head" data-act="hse" aria-expanded="${UI.hse}">
+        <h2 class="ls-h">Лицей ВШЭ: на лето</h2><span class="cap">справочник · ${HSE_N}</span><span class="chev">${UI.hse ? '−' : '+'}</span></button>
+      ${UI.hse ? `<p class="cap">Список литературы на лето для 8–11 классов, <a href="https://school.hse.ru/literature" target="_blank" rel="noopener">school.hse.ru/literature</a></p>
+        <input class="search" id="hse-q" type="search" placeholder="Найти в списке" value="${esc(UI.hq)}" autocomplete="off">
+        <div class="list" id="hse-list">${hseRows()}</div>` : ''}</section>`;
+}
+// справочник ВШЭ (hse.js): классы → подразделы → книги [название, автор, заметка]; строки по порядку сайта
+const HSE_ROWS = (typeof HSE === 'undefined' ? [] : HSE).flatMap(g => g.parts.flatMap(p => p.books.map(([t, a, n]) => ({ t, a, n: n || '', g: g.grade, p: p.title }))));
+const HSE_N = new Set(HSE_ROWS.map(x => x.t + '|' + x.a)).size;
+function hseRows() {
+  const q = norm(UI.hq);
+  let g0 = null, p0 = null, out = '';
+  HSE_ROWS.forEach((x, i) => {
+    if (q && !norm(x.t + ' ' + x.a).includes(q)) return;
+    if (x.g !== g0) { g0 = x.g; p0 = null; out += `<h3 class="grade">${esc(x.g)}</h3>`; }
+    if (x.p !== p0) { p0 = x.p; out += `<p class="cap part">${esc(x.p)}</p>`; }
+    const m = mine(x.t, x.a);
+    out += `<div class="row static"><span class="t"><span class="name">${esc(x.t)}</span><span class="cap">${esc(x.a)}${x.n ? ' · ' + esc(x.n) : ''}</span></span>
+      <span class="meta">${m ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : `<button class="btn small" data-act="hse-add" data-i="${i}">+ в планы</button>`}</span></div>`;
+  });
+  return out || '<p class="empty">Ничего не нашлось.</p>';
 }
 function bbcRows() {
   const q = norm(UI.q);
@@ -302,6 +341,11 @@ root.addEventListener('click', e => {
   }
   else if (act === 'cancel') { UI.form = null; UI.confirm = null; }
   else if (act === 'bbc') UI.bbc = !UI.bbc;
+  else if (act === 'hse') UI.hse = !UI.hse;
+  else if (act === 'hse-add') {
+    const x = HSE_ROWS[+el.dataset.i];
+    upsert({ id: newId(), title: x.t, author: x.a, status: 'plan', src: 'hse' });
+  }
   else if (act === 'bbc-add') {
     const [t, a] = BBC[+el.dataset.i];
     upsert({ id: newId(), title: t, author: a, status: 'plan', src: 'bbc' });
@@ -318,10 +362,12 @@ root.addEventListener('submit', e => {
     if (TOKEN) { LS.set('bk-token', TOKEN); boot(); }
   } else if (f.dataset.form) saveForm(f);
 });
+// поиск перерисовывает только свой список, чтобы поле не теряло фокус
 root.addEventListener('input', e => {
-  if (e.target.id !== 'bbc-q') return;
-  UI.q = e.target.value;
-  const list = document.getElementById('bbc-list'); if (list) list.innerHTML = bbcRows();
+  const id = e.target.id, box = id => document.getElementById(id);
+  if (id === 'bbc-q') { UI.q = e.target.value; if (box('bbc-list')) box('bbc-list').innerHTML = bbcRows(); }
+  else if (id === 'hse-q') { UI.hq = e.target.value; if (box('hse-list')) box('hse-list').innerHTML = hseRows(); }
+  else if (id === 'all-q') { UI.aq = e.target.value; if (box('all-list')) box('all-list').innerHTML = allRows(LAST); }
 });
 
 function loginView(msg) {
