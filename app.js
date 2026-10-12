@@ -9,7 +9,8 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* нечего удалять */ } },
 };
 const PREVIEW = window.BOOKS_PREVIEW || null;   // превью в артефакте: данные вшиты, ничего не сохраняется
-let TOKEN = LS.get('bk-token');
+// свой ключ или ключ «Поездок» (тот же сайт mary-jetmetrics.github.io, общее хранилище): если ему дан доступ к books-data, вводить ничего не надо
+let TOKEN = LS.get('bk-token') || LS.get('trips-token');
 let D = null, SHA = null;                       // books.json и sha его версии
 let saving = false, dirty = false, saveTimer = null, net = 'ok';
 // form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
@@ -349,7 +350,11 @@ async function boot() {
     render();
     if (!watching) { watching = true; document.addEventListener('visibilitychange', refresh); }
   } catch (e) {
-    if ([401, 403, 404].includes(e.status)) { LS.del('bk-token'); TOKEN = null; return loginView('Ключ не подошёл. Проверь, что у него есть доступ к репозиторию books-data и он не просрочен.'); }
+    if ([401, 403, 404].includes(e.status)) {
+      const own = TOKEN === LS.get('bk-token');   // чужой ключ «Поездок» не стираем: он нужен там
+      if (own) LS.del('bk-token'); TOKEN = null;
+      return loginView(own ? 'Ключ не подошёл. Проверь, что у него есть доступ к репозиторию books-data и он не просрочен.' : '');
+    }
     root.innerHTML = head('Нет связи с GitHub. Обнови страницу через минуту.');
   }
 }
