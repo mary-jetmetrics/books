@@ -13,7 +13,7 @@ const PREVIEW = window.BOOKS_PREVIEW || null;   // превью в артефа�
 let TOKEN = LS.get('bk-token') || LS.get('trips-token');
 let D = null, SHA = null;                       // books.json и sha его версии
 let saving = false, dirty = false, saveTimer = null, net = 'ok';
-// form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
+// form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-now' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
 const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', aq: '' };
 const root = document.getElementById('root');
 
@@ -121,10 +121,14 @@ function readView() {
   return nowBlock() + yearBtns + statsBlock(list) + chartBlock(list) + topBlock(list) + allBlock(list);
 }
 
+// блок виден всегда, и когда ничего не читаю: новая книга добавляется прямо сюда, без захода в планы (Мария, 28.10.26)
 function nowBlock() {
   const now = byStatus('reading');
-  if (!now.length) return '';
-  return `<section class="ls-block"><h2 class="ls-h">Сейчас читаю</h2>${now.map(b => `
+  const adding = UI.form && UI.form.mode === 'add-now';
+  return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">Сейчас читаю</h2>
+      <button class="btn small" data-act="add-now">+ Начала читать</button></div>
+    ${adding ? bookForm('add-now', {}) : ''}
+    ${!now.length && !adding ? '<p class="empty">Сейчас ничего не читаю.</p>' : ''}${now.map(b => `
     <div class="now"><div class="t"><span>${esc(b.title)}</span><span class="cap">${esc(b.author)}${b.author ? ' · ' : ''}${FMT[b.format] || ''}</span></div>
       <div class="acts" style="margin:0"><button class="btn main small" data-act="finish" data-id="${b.id}">Дочитала</button><button class="btn small" data-act="edit" data-id="${b.id}">Править</button></div></div>
     ${UI.form && UI.form.id === b.id && ['finish', 'edit'].includes(UI.form.mode) ? bookForm(UI.form.mode, b) : ''}`).join('')}</section>`;
@@ -307,10 +311,11 @@ function bbcRows() {
 }
 
 /* ---------- форма книги ---------- */
+const ADD = { 'add-read': 'read', 'add-now': 'reading', 'add-plan': 'plan' };   // форма новой книги → её статус
 const opts = (name, list, cur, req) => `<div class="opts">${list.map(([v, l]) =>
   `<label class="opt"><input type="radio" name="${name}" value="${v}"${String(cur) === String(v) ? ' checked' : ''}${req ? ' required' : ''}><span>${l}</span></label>`).join('')}</div>`;
 function bookForm(mode, b) {
-  const status = mode === 'add-read' || mode === 'finish' ? 'read' : mode === 'add-plan' ? 'plan' : b.status;
+  const status = mode === 'finish' ? 'read' : ADD[mode] || b.status;
   const names = mode !== 'finish';
   const fmt = status !== 'plan';
   const read = status === 'read';
@@ -328,7 +333,7 @@ function bookForm(mode, b) {
 }
 function saveForm(f) {
   const fd = new FormData(f), mode = f.dataset.form, val = k => (fd.get(k) ?? '').toString().trim();
-  const b = mode.startsWith('add') ? { id: newId(), status: mode === 'add-read' ? 'read' : 'plan' } : { ...find(f.dataset.id) };
+  const b = ADD[mode] ? { id: newId(), status: ADD[mode] } : { ...find(f.dataset.id) };
   if (fd.has('title')) { b.title = val('title'); b.author = val('author'); }
   if (fd.has('format')) { b.format = val('format'); b.lang = val('lang'); }
   if (mode === 'finish') b.status = 'read';
@@ -349,7 +354,7 @@ root.addEventListener('click', e => {
   else if (act === 'sort') UI.sort = v;
   else if (act === 'open') toggleForm('edit', id);
   else if (act === 'popen') { if (UI.form && UI.form.id === id) UI.form = null; else UI.form = { mode: 'pact', id }; UI.confirm = null; }
-  else if (act === 'add-read' || act === 'add-plan') toggleForm(act, undefined);
+  else if (ADD[act]) toggleForm(act, undefined);
   else if (act === 'finish' || act === 'edit') { UI.form = { mode: act, id }; UI.confirm = null; }
   else if (act === 'start') { const b = { ...find(id), status: 'reading' }; b.format = b.format || 'audio'; b.lang = b.lang || 'ru'; upsert(b); UI.form = null; }
   else if (act === 'del') {
