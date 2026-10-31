@@ -14,7 +14,7 @@ let TOKEN = LS.get('bk-token') || LS.get('trips-token');
 let D = null, SHA = null;                       // books.json и sha его версии
 let saving = false, dirty = false, saveTimer = null, net = 'ok';
 // form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-now' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
-const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', aq: '' };
+const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, cum: LS.get('bk-cum') === '1', sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', aq: '' };
 const root = document.getElementById('root');
 
 /* ---------- общее ---------- */
@@ -162,7 +162,8 @@ function statsBlock(list) {
   </div>`;
 }
 
-// столбики по месяцам (за всё время — по годам), внутри — доли форматов
+// столбики по месяцам (за всё время — по годам), внутри — доли форматов, над столбиком — итог.
+// «Накопительно»: сумма с начала года (за всё время — с первого года); в текущем году столбики только до текущего месяца
 function chartBlock(list) {
   if (!list.length) return '';
   const all = UI.year === 'all';
@@ -173,27 +174,35 @@ function chartBlock(list) {
         return Array.from({ length: hi - lo + 1 }, (_, i) => String(lo + i)).map(y => ({ key: y, label: all && hi - lo > 6 ? `’${y.slice(2)}` : y })); })()
     : MON_S.map((l, i) => ({ key: `${UI.year}-${pad(i + 1)}`, label: l }));
   const val = (c, f) => list.filter(b => (all ? b.month.slice(0, 4) : b.month) === c.key && (b.format || 'audio') === f).length;
-  const totals = cols.map(c => FMTS.reduce((s, [f]) => s + val(c, f), 0));
-  const top = Math.max(3, ...totals), step = top <= 6 ? 1 : top <= 12 ? 2 : 5, ceil = Math.ceil(top / step) * step;
+  const run = {};
+  cols.forEach(c => {
+    const future = UI.cum && !all && c.key > THIS_MONTH;
+    c.v = {}; c.total = 0;
+    for (const [f] of FMTS) { const v = val(c, f); run[f] = (run[f] || 0) + v; c.v[f] = future ? 0 : UI.cum ? run[f] : v; c.total += c.v[f]; }
+  });
+  const top = Math.max(3, ...cols.map(c => c.total)), step = top <= 6 ? 1 : top <= 12 ? 2 : top <= 60 ? 5 : top <= 120 ? 10 : 20, ceil = Math.ceil(top / step) * step;
   // ширина рисунка = ширина блока, чтобы подписи на телефоне не мельчали
-  const W = Math.round(Math.max(300, Math.min(700, root.clientWidth - 34))), H = 190, pl = 22, pr = 4, pt = 8, pb = 24, ph = H - pt - pb, gw = (W - pl - pr) / cols.length, bw = Math.min(28, gw * 0.56);
+  const W = Math.round(Math.max(300, Math.min(700, root.clientWidth - 34))), H = 204, pl = ceil >= 100 ? 28 : 22, pr = 4, pt = 22, pb = 24, ph = H - pt - pb, gw = (W - pl - pr) / cols.length, bw = Math.min(28, gw * 0.56);
   const y = v => pt + ph - v / ceil * ph;
   let g = '';
   for (let v = 0; v <= ceil; v += step) g += `<line class="grid" x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
   cols.forEach((c, i) => {
     const x = pl + gw * i + (gw - bw) / 2; let acc = 0;
     for (const [f] of FMTS) {
-      const v = val(c, f); if (!v) continue;
+      const v = c.v[f]; if (!v) continue;
       g += `<rect x="${x + .5}" y="${y(acc + v) + .5}" width="${bw - 1}" height="${Math.max(y(acc) - y(acc + v) - 1, 1)}" rx="2" fill="var(--t-${f})" stroke="var(--bar-line)"/>`;
       acc += v;
     }
+    if (c.total) g += `<text class="val" x="${pl + gw * i + gw / 2}" y="${y(c.total) - 5}" text-anchor="middle">${c.total}</text>`;
     g += `<text x="${pl + gw * i + gw / 2}" y="${H - 6}" text-anchor="middle">${c.label}</text>`;
   });
   g += `<line class="axis" x1="${pl}" x2="${W - pr}" y1="${y(0)}" y2="${y(0)}"/>`;
   const used = FMTS.filter(([f]) => list.some(b => (b.format || 'audio') === f));
-  return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">${all ? 'По годам' : 'По месяцам'}</h2>
+  const modes = [['', all ? 'За год' : 'За месяц'], ['1', 'Накопительно']].map(([m, l]) =>
+    `<button data-act="cum" data-v="${m}" aria-pressed="${UI.cum === !!m}">${l}</button>`).join('');
+  return `<section class="ls-block"><div class="sec-top"><div class="chart-head"><h2 class="ls-h">${all ? 'По годам' : 'По месяцам'}</h2><div class="filters">${modes}</div></div>
     <div class="legend">${used.map(([f, l]) => `<span><i class="sq" style="--g:var(--t-${f})"></i>${l}</span>`).join('')}</div></div>
-    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Книги ${all ? 'по годам' : 'по месяцам'}">${g}</svg></div></section>`;
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Книги ${all ? 'по годам' : 'по месяцам'}${UI.cum ? ', накопительно' : ''}">${g}</svg></div></section>`;
 }
 
 function topBlock(list) {
@@ -351,6 +360,7 @@ root.addEventListener('click', e => {
   const act = el.dataset.act, id = el.dataset.id, v = el.dataset.v;
   if (act === 'tab') { UI.tab = v; LS.set('bk-tab', v); UI.form = null; }
   else if (act === 'year') UI.year = v;
+  else if (act === 'cum') { UI.cum = v === '1'; LS.set('bk-cum', v); }
   else if (act === 'sort') UI.sort = v;
   else if (act === 'open') toggleForm('edit', id);
   else if (act === 'popen') { if (UI.form && UI.form.id === id) UI.form = null; else UI.form = { mode: 'pact', id }; UI.confirm = null; }
