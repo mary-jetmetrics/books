@@ -78,6 +78,9 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 .tag.t-paper { background: var(--t-paper); }
 .tag.t-ebook { background: var(--t-ebook); }
 .tag.white { background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); }
+/* «аудио ↗» в планах — ссылка на аудиокнигу в Яндекс Книгах (Мария, 03.11.26) */
+a.tag.ya { text-decoration: none; }
+a.tag.ya:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
 
 /* списки книг */
 .list { display: grid; }
@@ -104,6 +107,7 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
   .row.bk { grid-template-columns: 60px 44px var(--mon-w, 64px) 28px minmax(0, 1fr); }
   .row.bk > .t { grid-column: 1 / -1; }
 }
+.row[role="button"] { -webkit-tap-highlight-color: transparent; }
 .row.static { cursor: default; }
 .row.static:hover { background: none; }
 

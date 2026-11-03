@@ -260,35 +260,40 @@ function mine(title, author) {
   const t = norm(title), as = author ? surnames(author) : null;
   return live().find(b => {
     const m = norm(b.title);
-    if (!as) return m.length >= 5 && t.length >= 5 && (t.includes(m) || m.includes(t));
+    if (!as) return m === t || (m.length >= 5 && t.length >= 5 && (t.includes(m) || m.includes(t)));   // «1984» — короткое, но целиком
     if (!(m === t || (m.length >= 5 && t.length >= 5 && (t.includes(m) || m.includes(t))))) return false;
     return !b.author || surnames(b.author).some(w => as.includes(w));
   });
 }
-const STATE = { read: 'прочитано', reading: 'читаю', plan: 'в планах' };
+const STATE = { read: 'прочитано', reading: 'читаю' };
+// аудиокнига в Яндекс Книгах: у своих книг — поле audio в books.json, у списков BBC и ВШЭ — audio.js (ключ «название|автор»)
+const AUDIO_MAP = typeof AUDIO === 'undefined' ? {} : AUDIO;
+const audioOf = (t, a, own) => (own && own.audio) || AUDIO_MAP[t + '|' + a] || '';
+const audioTag = id => id ? `<a class="tag t-audio ya" href="https://books.yandex.ru/audiobooks/${esc(id)}" target="_blank" rel="noopener" title="Слушать в Яндекс Книгах">аудио ↗</a>` : '';
 
+// все списки на странице — планы: свой «Хочу прочитать», Топ-200 BBC и Лицей ВШЭ; книгу из любого начинают читать прямо оттуда (Мария, 03.11.26)
 function planView() {
   const plans = byStatus('plan').sort((a, b) => (a.at || 0) - (b.at || 0));
   const adding = UI.form && UI.form.mode === 'add-plan';
   return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">Хочу прочитать</h2>
-      <button class="btn small" data-act="add-plan">+ В планы</button></div>
+      <button class="btn small" data-act="add-plan">+ Добавить книгу</button></div>
     <div class="list">${adding ? bookForm('add-plan', {}) : ''}${plans.map(b => {
       const f = UI.form && UI.form.id === b.id ? UI.form.mode : null;
-      return `<button class="row" data-act="popen" data-id="${b.id}" aria-expanded="${!!f}">
+      return `<div class="row" role="button" tabindex="0" data-act="popen" data-id="${b.id}" aria-expanded="${!!f}">
         <span class="t"><span class="name">${esc(b.title)}</span>${b.author ? `<span class="cap">${esc(b.author)}</span>` : ''}</span>
-        <span class="meta">${b.src === 'bbc' ? '<span class="tag white">BBC</span>' : b.src === 'hse' ? '<span class="tag white">ВШЭ</span>' : ''}</span></button>
-        ${f === 'pact' ? `<div class="pacts"><button class="btn small main" data-act="start" data-id="${b.id}">Начинаю читать</button>
+        <span class="meta">${audioTag(audioOf(b.title, b.author, b))}${b.src === 'bbc' ? '<span class="tag white">BBC</span>' : b.src === 'hse' ? '<span class="tag white">ВШЭ</span>' : ''}</span></div>
+        ${f === 'pact' ? `<div class="pacts"><button class="btn small main" data-act="start" data-id="${b.id}">Начать читать</button>
           <button class="btn small" data-act="finish" data-id="${b.id}">Уже прочитала</button>
           <button class="btn small" data-act="edit" data-id="${b.id}">Править</button>
           <button class="link del" data-act="del" data-id="${b.id}">${UI.confirm === b.id ? 'Точно убрать?' : 'Убрать'}</button></div>` : ''}
         ${f === 'finish' || f === 'edit' ? bookForm(f, b) : ''}`;
-    }).join('') || '<p class="empty">Планов пока нет. Добавь книгу или возьми из списков ниже.</p>'}</div></section>
+    }).join('') || '<p class="empty">Своих книг пока нет.</p>'}</div></section>
     <section class="ls-block"><button class="sec-head" data-act="bbc" aria-expanded="${UI.bbc}">
-        <h2 class="ls-h">Топ-200 BBC</h2><span class="cap">справочник · ${BBC.length}</span><span class="chev">${UI.bbc ? '−' : '+'}</span></button>
+        <h2 class="ls-h">Топ-200 BBC</h2><span class="cap">${BBC.length} ${plural(BBC.length, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.bbc ? '−' : '+'}</span></button>
       ${UI.bbc ? `<input class="search" id="bbc-q" type="search" placeholder="Найти в списке" value="${esc(UI.q)}" autocomplete="off">
         <div class="list" id="bbc-list">${bbcRows()}</div>` : ''}</section>
     <section class="ls-block"><button class="sec-head" data-act="hse" aria-expanded="${UI.hse}">
-        <h2 class="ls-h">Лицей ВШЭ: на лето</h2><span class="cap">справочник · ${HSE_N}</span><span class="chev">${UI.hse ? '−' : '+'}</span></button>
+        <h2 class="ls-h">Лицей ВШЭ: на лето</h2><span class="cap">${HSE_N} ${plural(HSE_N, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.hse ? '−' : '+'}</span></button>
       ${UI.hse ? `<p class="cap">Список литературы на лето для 8–11 классов, <a href="https://school.hse.ru/literature" target="_blank" rel="noopener">school.hse.ru/literature</a></p>
         <input class="search" id="hse-q" type="search" placeholder="Найти в списке" value="${esc(UI.hq)}" autocomplete="off">
         <div class="list" id="hse-list">${hseRows()}</div>` : ''}</section>`;
@@ -303,49 +308,68 @@ function hseRows() {
     if (q && !norm(x.t + ' ' + x.a).includes(q)) return;
     if (x.g !== g0) { g0 = x.g; p0 = null; out += `<h3 class="grade">${esc(x.g)}</h3>`; }
     if (x.p !== p0) { p0 = x.p; out += `<p class="cap part">${esc(x.p)}</p>`; }
-    const m = mine(x.t, x.a);
-    out += `<div class="row static"><span class="t"><span class="name">${esc(x.t)}</span><span class="cap">${esc(x.a)}${x.n ? ' · ' + esc(x.n) : ''}</span></span>
-      <span class="meta">${m ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : `<button class="btn small" data-act="hse-add" data-i="${i}">+ в планы</button>`}</span></div>`;
+    out += refRow(`hse:${i}`);
   });
   return out || '<p class="empty">Ничего не нашлось.</p>';
 }
 function bbcRows() {
   const q = norm(UI.q);
-  const rows = BBC.map((x, i) => [x, i]).filter(([[t, a]]) => !q || norm(t + ' ' + a).includes(q));
-  return rows.map(([[t, a], i]) => {
-    const m = mine(t);
-    return `<div class="row static"><span class="t"><span class="name">${esc(t)}</span><span class="cap">${esc(a)}</span></span>
-      <span class="meta">${m ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : `<button class="btn small" data-act="bbc-add" data-i="${i}">+ в планы</button>`}</span></div>`;
-  }).join('') || '<p class="empty">Ничего не нашлось.</p>';
+  return BBC.map((x, i) => [x, i]).filter(([[t, a]]) => !q || norm(t + ' ' + a).includes(q))
+    .map(([, i]) => refRow(`bbc:${i}`)).join('') || '<p class="empty">Ничего не нашлось.</p>';
+}
+// книга списка по ключу строки «bbc:номер» / «hse:номер»; у Марии она уже есть — прочитана, читается или в своём списке
+function refBook(key) {
+  const [s, i] = key.split(':');
+  if (s === 'bbc') { const [t, a] = BBC[+i]; return { t, a, n: '', src: s }; }
+  const x = HSE_ROWS[+i]; return { t: x.t, a: x.a, n: x.n, src: s };
+}
+const refMine = r => mine(r.t, r.src === 'hse' ? r.a : undefined);
+// прочитанное и начатое — с меткой, остальное нажимается: «Начать читать» или «Уже прочитала»
+function refRow(key) {
+  const r = refBook(key), m = refMine(r), done = m && STATE[m.status];
+  const f = UI.form && UI.form.id === key ? UI.form.mode : null;
+  return `<div class="row${done ? ' static' : ''}"${done ? '' : ` role="button" tabindex="0" data-act="ropen" data-id="${key}" aria-expanded="${!!f}"`}>
+      <span class="t"><span class="name">${esc(r.t)}</span><span class="cap">${esc(r.a)}${r.n ? ' · ' + esc(r.n) : ''}</span></span>
+      <span class="meta">${audioTag(audioOf(r.t, r.a, m))}${done ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : ''}</span></div>
+    ${f === 'ract' ? `<div class="pacts"><button class="btn small main" data-act="rstart" data-id="${key}">Начать читать</button>
+      <button class="btn small" data-act="rfinish" data-id="${key}">Уже прочитала</button></div>` : ''}
+    ${f === 'ref-read' ? bookForm('ref-read', { id: key, title: r.t, author: r.a }) : ''}`;
+}
+// книга из списка становится своей: если она уже в «Хочу прочитать» — меняется та же запись, иначе заводится новая
+function refToMine(key, status) {
+  const r = refBook(key), m = refMine(r), audio = audioOf(r.t, r.a, m);
+  return m ? { ...m, status } : { id: newId(), title: r.t, author: r.a, status, src: r.src, ...(audio ? { audio } : {}) };
 }
 
 /* ---------- форма книги ---------- */
 const ADD = { 'add-read': 'read', 'add-now': 'reading', 'add-plan': 'plan' };   // форма новой книги → её статус
+// ref-read — «Уже прочитала» у книги из списков BBC и ВШЭ: как finish, только книга заводится по строке списка
 const opts = (name, list, cur, req) => `<div class="opts">${list.map(([v, l]) =>
   `<label class="opt"><input type="radio" name="${name}" value="${v}"${String(cur) === String(v) ? ' checked' : ''}${req ? ' required' : ''}><span>${l}</span></label>`).join('')}</div>`;
 function bookForm(mode, b) {
-  const status = mode === 'finish' ? 'read' : ADD[mode] || b.status;
-  const names = mode !== 'finish';
+  const fin = mode === 'finish' || mode === 'ref-read';
+  const status = fin ? 'read' : ADD[mode] || b.status;
+  const names = !fin;
   const fmt = status !== 'plan';
   const read = status === 'read';
   return `<form class="bform" data-form="${mode}" data-id="${b.id || ''}">
-    ${mode === 'finish' ? `<p class="cap">«${esc(b.title)}» — когда дочитала и как оценишь</p>` : ''}
+    ${fin ? `<p class="cap">«${esc(b.title)}» — когда дочитала и как оценишь</p>` : ''}
     ${names ? `<label class="f cap">Название<input type="text" name="title" required value="${esc(b.title || '')}" autocomplete="off"></label>
       <label class="f cap">Автор<input type="text" name="author" value="${esc(b.author || '')}" autocomplete="off"></label>` : ''}
     ${fmt ? `<span class="cap">Формат</span>${opts('format', FMTS, b.format || 'audio')}<span class="cap">Язык</span>${opts('lang', LANGS, b.lang || 'ru')}` : ''}
     ${read ? `<label class="f cap">Когда дочитала${yearOnly(b.month) ? ` (записан только год, ${b.month} — можно оставить пустым)` : ''}<input type="month" name="month" ${yearOnly(b.month) ? '' : 'required'} value="${yearOnly(b.month) ? '' : b.month || THIS_MONTH}" max="${THIS_MONTH}"></label>
       <span class="cap">Оценка из 10</span>${opts('rating', Array.from({ length: 10 }, (_, i) => [i + 1, i + 1]), b.rating || '', true)}` : ''}
-    <div class="acts"><button class="btn main" type="submit">${mode === 'finish' ? 'Дочитала' : 'Сохранить'}</button>
+    <div class="acts"><button class="btn main" type="submit">${fin ? 'Дочитала' : 'Сохранить'}</button>
       <button class="btn" type="button" data-act="cancel">Отмена</button>
       ${mode === 'edit' ? `<button class="link del" type="button" data-act="del" data-id="${b.id}">${UI.confirm === b.id ? 'Точно удалить?' : 'Удалить'}</button>` : ''}</div>
   </form>`;
 }
 function saveForm(f) {
   const fd = new FormData(f), mode = f.dataset.form, val = k => (fd.get(k) ?? '').toString().trim();
-  const b = ADD[mode] ? { id: newId(), status: ADD[mode] } : { ...find(f.dataset.id) };
+  const b = ADD[mode] ? { id: newId(), status: ADD[mode] } : mode === 'ref-read' ? refToMine(f.dataset.id, 'read') : { ...find(f.dataset.id) };
   if (fd.has('title')) { b.title = val('title'); b.author = val('author'); }
   if (fd.has('format')) { b.format = val('format'); b.lang = val('lang'); }
-  if (mode === 'finish') b.status = 'read';
+  if (mode === 'finish' || mode === 'ref-read') b.status = 'read';
   if (fd.has('month')) { b.month = val('month') || (yearOnly(b.month) ? b.month : ''); b.rating = +val('rating') || null; }
   if (!b.title) return;
   upsert(b);
@@ -356,6 +380,7 @@ function saveForm(f) {
 /* ---------- действия ---------- */
 const toggleForm = (mode, id) => { UI.form = UI.form && UI.form.mode === mode && UI.form.id === id ? null : { mode, id }; UI.confirm = null; };
 root.addEventListener('click', e => {
+  if (e.target.closest('a')) return;   // ссылка «аудио ↗» внутри строки открывает Яндекс Книги, строку не раскрывает
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act, id = el.dataset.id, v = el.dataset.v;
   if (act === 'tab') { UI.tab = v; LS.set('bk-tab', v); UI.form = null; }
@@ -374,17 +399,16 @@ root.addEventListener('click', e => {
   else if (act === 'cancel') { UI.form = null; UI.confirm = null; }
   else if (act === 'bbc') UI.bbc = !UI.bbc;
   else if (act === 'hse') UI.hse = !UI.hse;
-  else if (act === 'hse-add') {
-    const x = HSE_ROWS[+el.dataset.i];
-    upsert({ id: newId(), title: x.t, author: x.a, status: 'plan', src: 'hse' });
-  }
-  else if (act === 'bbc-add') {
-    const [t, a] = BBC[+el.dataset.i];
-    upsert({ id: newId(), title: t, author: a, status: 'plan', src: 'bbc' });
-  }
+  else if (act === 'ropen') { UI.form = UI.form && UI.form.id === id ? null : { mode: 'ract', id }; UI.confirm = null; }
+  else if (act === 'rstart') { const b = refToMine(id, 'reading'); b.format = b.format || 'audio'; b.lang = b.lang || 'ru'; upsert(b); UI.form = null; }
+  else if (act === 'rfinish') { UI.form = { mode: 'ref-read', id }; UI.confirm = null; }
   else if (act === 'logout') { LS.del('bk-token'); TOKEN = null; D = null; return loginView(); }
   else return;
   render();
+});
+// строки-кнопки (div с role="button": внутри ссылка, в <button> её класть нельзя) — с клавиатуры тоже
+root.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"]')) { e.preventDefault(); e.target.click(); }
 });
 root.addEventListener('submit', e => {
   e.preventDefault();
