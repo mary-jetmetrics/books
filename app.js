@@ -305,20 +305,16 @@ function planView() {
         <input class="search" id="ig-q" type="search" placeholder="Найти в списке" value="${esc(UI.gq)}" autocomplete="off">
         <div class="list" id="ig-list">${igRows()}</div>` : ''}</section>` : ''}`;
 }
-// «Из Инстаграма»: книги по постам подборки, над каждым постом — о чём он и ссылка (Мария, 03.11.26)
+// «Из Инстаграма»: сплошной список, у каждой книги тихая ссылка «пост ↗» на её пост (Мария, 03.11.26: вариант 1, «не плашкой, а более лайтово»;
+// подписи постов над группами были непонятно к чему)
 function setIG(data) {
   IG = data && data.posts ? data : null;
   IG_ROWS = IG ? IG.posts.flatMap(p => p.books.map(([t, a, audio]) => ({ t, a: a || '', audio: audio || '', p }))) : [];
 }
 function igRows() {
   const q = norm(UI.gq);
-  let p0 = null, out = '';
-  IG_ROWS.forEach((x, i) => {
-    if (q && !norm(x.t + ' ' + x.a).includes(q)) return;
-    if (x.p !== p0) { p0 = x.p; out += `<p class="cap part">${esc(x.p.what)} · <a href="${esc(x.p.url)}" target="_blank" rel="noopener">пост</a></p>`; }
-    out += refRow(`ig:${i}`);
-  });
-  return out || '<p class="empty">Ничего не нашлось.</p>';
+  return IG_ROWS.map((x, i) => [x, i]).filter(([x]) => !q || norm(x.t + ' ' + x.a).includes(q))
+    .map(([, i]) => refRow(`ig:${i}`)).join('') || '<p class="empty">Ничего не нашлось.</p>';
 }
 // справочник ВШЭ (hse.js): классы → подразделы → книги [название, автор, заметка]; строки по порядку сайта
 const HSE_ROWS = (typeof HSE === 'undefined' ? [] : HSE).flatMap(g => g.parts.flatMap(p => p.books.map(([t, a, n]) => ({ t, a, n: n || '', g: g.grade, p: p.title }))));
@@ -343,7 +339,7 @@ function bbcRows() {
 function refBook(key) {
   const [s, i] = key.split(':');
   if (s === 'bbc') { const [t, a] = BBC[+i]; return { t, a, n: '', src: s }; }
-  if (s === 'ig') { const x = IG_ROWS[+i]; return { t: x.t, a: x.a, n: '', src: s, audio: x.audio }; }
+  if (s === 'ig') { const x = IG_ROWS[+i]; return { t: x.t, a: x.a, n: '', src: s, audio: x.audio, url: x.p.url }; }
   const x = HSE_ROWS[+i]; return { t: x.t, a: x.a, n: x.n, src: s };
 }
 const refMine = r => mine(r.t, r.src === 'bbc' ? undefined : r.a || undefined);
@@ -353,7 +349,7 @@ function refRow(key) {
   const f = UI.form && UI.form.id === key ? UI.form.mode : null;
   return `<div class="row${done ? ' static' : ''}"${done ? '' : ` role="button" tabindex="0" data-act="ropen" data-id="${key}" aria-expanded="${!!f}"`}>
       <span class="t"><span class="name">${esc(r.t)}</span><span class="cap">${esc(r.a)}${r.n ? ' · ' + esc(r.n) : ''}</span></span>
-      <span class="meta">${audioTag(r.audio || audioOf(r.t, r.a, m))}${done ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : ''}</span></div>
+      <span class="meta">${audioTag(r.audio || audioOf(r.t, r.a, m))}${r.url ? `<a class="plink" href="${esc(r.url)}" target="_blank" rel="noopener" title="Открыть пост в Инстаграме">пост ↗</a>` : ''}${done ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : ''}</span></div>
     ${f === 'ract' ? `<div class="pacts"><button class="btn small main" data-act="rstart" data-id="${key}">Начать читать</button>
       <button class="btn small" data-act="rfinish" data-id="${key}">Уже прочитала</button></div>` : ''}
     ${f === 'ref-read' ? bookForm('ref-read', { id: key, title: r.t, author: r.a }) : ''}`;
