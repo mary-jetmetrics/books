@@ -12,9 +12,11 @@ const PREVIEW = window.BOOKS_PREVIEW || null;   // превью в артефа�
 // свой ключ или ключ «Поездок» (тот же сайт mary-jetmetrics.github.io, общее хранилище): если ему дан доступ к books-data, вводить ничего не надо
 let TOKEN = LS.get('bk-token') || LS.get('trips-token');
 let D = null, SHA = null;                       // books.json и sha его версии
+// список «Из Инстаграма» — instagram.json в том же закрытом репозитории (личная подборка, не в открытом коде): посты → книги [название, автор, аудио]
+let IG = null, IG_ROWS = [];
 let saving = false, dirty = false, saveTimer = null, net = 'ok';
 // form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-now' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
-const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, cum: LS.get('bk-cum') === '1', sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', aq: '' };
+const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, cum: LS.get('bk-cum') === '1', sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', ig: false, gq: '', aq: '' };
 const root = document.getElementById('root');
 
 /* ---------- общее ---------- */
@@ -271,7 +273,7 @@ const AUDIO_MAP = typeof AUDIO === 'undefined' ? {} : AUDIO;
 const audioOf = (t, a, own) => (own && own.audio) || AUDIO_MAP[t + '|' + a] || '';
 const audioTag = id => id ? `<a class="tag t-audio ya" href="https://books.yandex.ru/audiobooks/${esc(id)}" target="_blank" rel="noopener" title="Слушать в Яндекс Книгах">аудио ↗</a>` : '';
 
-// все списки на странице — планы: свой «Хочу прочитать», Топ-200 BBC и Лицей ВШЭ; книгу из любого начинают читать прямо оттуда (Мария, 03.11.26)
+// все списки на странице — планы: свой «Хочу прочитать», Топ-200 BBC, Лицей ВШЭ и «Из Инстаграма»; книгу из любого начинают читать прямо оттуда (Мария, 03.11.26)
 function planView() {
   const plans = byStatus('plan').sort((a, b) => (a.at || 0) - (b.at || 0));
   const adding = UI.form && UI.form.mode === 'add-plan';
@@ -296,7 +298,27 @@ function planView() {
         <h2 class="ls-h">Лицей ВШЭ: на лето</h2><span class="cap">${HSE_N} ${plural(HSE_N, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.hse ? '−' : '+'}</span></button>
       ${UI.hse ? `<p class="cap">Список литературы на лето для 8–11 классов, <a href="https://school.hse.ru/literature" target="_blank" rel="noopener">school.hse.ru/literature</a></p>
         <input class="search" id="hse-q" type="search" placeholder="Найти в списке" value="${esc(UI.hq)}" autocomplete="off">
-        <div class="list" id="hse-list">${hseRows()}</div>` : ''}</section>`;
+        <div class="list" id="hse-list">${hseRows()}</div>` : ''}</section>
+    ${IG_ROWS.length ? `<section class="ls-block"><button class="sec-head" data-act="ig" aria-expanded="${UI.ig}">
+        <h2 class="ls-h">Из Инстаграма</h2><span class="cap">${IG_ROWS.length} ${plural(IG_ROWS.length, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.ig ? '−' : '+'}</span></button>
+      ${UI.ig ? `<p class="cap">${esc(IG.about || '')}</p>
+        <input class="search" id="ig-q" type="search" placeholder="Найти в списке" value="${esc(UI.gq)}" autocomplete="off">
+        <div class="list" id="ig-list">${igRows()}</div>` : ''}</section>` : ''}`;
+}
+// «Из Инстаграма»: книги по постам подборки, над каждым постом — о чём он и ссылка (Мария, 03.11.26)
+function setIG(data) {
+  IG = data && data.posts ? data : null;
+  IG_ROWS = IG ? IG.posts.flatMap(p => p.books.map(([t, a, audio]) => ({ t, a: a || '', audio: audio || '', p }))) : [];
+}
+function igRows() {
+  const q = norm(UI.gq);
+  let p0 = null, out = '';
+  IG_ROWS.forEach((x, i) => {
+    if (q && !norm(x.t + ' ' + x.a).includes(q)) return;
+    if (x.p !== p0) { p0 = x.p; out += `<p class="cap part">${esc(x.p.what)} · <a href="${esc(x.p.url)}" target="_blank" rel="noopener">пост</a></p>`; }
+    out += refRow(`ig:${i}`);
+  });
+  return out || '<p class="empty">Ничего не нашлось.</p>';
 }
 // справочник ВШЭ (hse.js): классы → подразделы → книги [название, автор, заметка]; строки по порядку сайта
 const HSE_ROWS = (typeof HSE === 'undefined' ? [] : HSE).flatMap(g => g.parts.flatMap(p => p.books.map(([t, a, n]) => ({ t, a, n: n || '', g: g.grade, p: p.title }))));
@@ -317,33 +339,34 @@ function bbcRows() {
   return BBC.map((x, i) => [x, i]).filter(([[t, a]]) => !q || norm(t + ' ' + a).includes(q))
     .map(([, i]) => refRow(`bbc:${i}`)).join('') || '<p class="empty">Ничего не нашлось.</p>';
 }
-// книга списка по ключу строки «bbc:номер» / «hse:номер»; у Марии она уже есть — прочитана, читается или в своём списке
+// книга списка по ключу строки «bbc:номер» / «hse:номер» / «ig:номер»; у Марии она уже есть — прочитана, читается или в своём списке
 function refBook(key) {
   const [s, i] = key.split(':');
   if (s === 'bbc') { const [t, a] = BBC[+i]; return { t, a, n: '', src: s }; }
+  if (s === 'ig') { const x = IG_ROWS[+i]; return { t: x.t, a: x.a, n: '', src: s, audio: x.audio }; }
   const x = HSE_ROWS[+i]; return { t: x.t, a: x.a, n: x.n, src: s };
 }
-const refMine = r => mine(r.t, r.src === 'hse' ? r.a : undefined);
+const refMine = r => mine(r.t, r.src === 'bbc' ? undefined : r.a || undefined);
 // прочитанное и начатое — с меткой, остальное нажимается: «Начать читать» или «Уже прочитала»
 function refRow(key) {
   const r = refBook(key), m = refMine(r), done = m && STATE[m.status];
   const f = UI.form && UI.form.id === key ? UI.form.mode : null;
   return `<div class="row${done ? ' static' : ''}"${done ? '' : ` role="button" tabindex="0" data-act="ropen" data-id="${key}" aria-expanded="${!!f}"`}>
       <span class="t"><span class="name">${esc(r.t)}</span><span class="cap">${esc(r.a)}${r.n ? ' · ' + esc(r.n) : ''}</span></span>
-      <span class="meta">${audioTag(audioOf(r.t, r.a, m))}${done ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : ''}</span></div>
+      <span class="meta">${audioTag(r.audio || audioOf(r.t, r.a, m))}${done ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : ''}</span></div>
     ${f === 'ract' ? `<div class="pacts"><button class="btn small main" data-act="rstart" data-id="${key}">Начать читать</button>
       <button class="btn small" data-act="rfinish" data-id="${key}">Уже прочитала</button></div>` : ''}
     ${f === 'ref-read' ? bookForm('ref-read', { id: key, title: r.t, author: r.a }) : ''}`;
 }
 // книга из списка становится своей: если она уже в «Хочу прочитать» — меняется та же запись, иначе заводится новая
 function refToMine(key, status) {
-  const r = refBook(key), m = refMine(r), audio = audioOf(r.t, r.a, m);
+  const r = refBook(key), m = refMine(r), audio = r.audio || audioOf(r.t, r.a, m);
   return m ? { ...m, status } : { id: newId(), title: r.t, author: r.a, status, src: r.src, ...(audio ? { audio } : {}) };
 }
 
 /* ---------- форма книги ---------- */
 const ADD = { 'add-read': 'read', 'add-now': 'reading', 'add-plan': 'plan' };   // форма новой книги → её статус
-// ref-read — «Уже прочитала» у книги из списков BBC и ВШЭ: как finish, только книга заводится по строке списка
+// ref-read — «Уже прочитала» у книги из списков BBC, ВШЭ и Инстаграма: как finish, только книга заводится по строке списка
 const opts = (name, list, cur, req) => `<div class="opts">${list.map(([v, l]) =>
   `<label class="opt"><input type="radio" name="${name}" value="${v}"${String(cur) === String(v) ? ' checked' : ''}${req ? ' required' : ''}><span>${l}</span></label>`).join('')}</div>`;
 function bookForm(mode, b) {
@@ -399,6 +422,7 @@ root.addEventListener('click', e => {
   else if (act === 'cancel') { UI.form = null; UI.confirm = null; }
   else if (act === 'bbc') UI.bbc = !UI.bbc;
   else if (act === 'hse') UI.hse = !UI.hse;
+  else if (act === 'ig') UI.ig = !UI.ig;
   else if (act === 'ropen') { UI.form = UI.form && UI.form.id === id ? null : { mode: 'ract', id }; UI.confirm = null; }
   else if (act === 'rstart') { const b = refToMine(id, 'reading'); b.format = b.format || 'audio'; b.lang = b.lang || 'ru'; upsert(b); UI.form = null; }
   else if (act === 'rfinish') { UI.form = { mode: 'ref-read', id }; UI.confirm = null; }
@@ -423,6 +447,7 @@ root.addEventListener('input', e => {
   const id = e.target.id, box = id => document.getElementById(id);
   if (id === 'bbc-q') { UI.q = e.target.value; if (box('bbc-list')) box('bbc-list').innerHTML = bbcRows(); }
   else if (id === 'hse-q') { UI.hq = e.target.value; if (box('hse-list')) box('hse-list').innerHTML = hseRows(); }
+  else if (id === 'ig-q') { UI.gq = e.target.value; if (box('ig-list')) box('ig-list').innerHTML = igRows(); }
   else if (id === 'all-q') { UI.aq = e.target.value; if (box('all-list')) box('all-list').innerHTML = allRows(LAST); }
 });
 
@@ -443,12 +468,13 @@ function readHash() {
 }
 let watching = false;
 async function boot() {
-  if (PREVIEW) { D = JSON.parse(JSON.stringify(PREVIEW)); net = 'preview'; return render(); }
+  if (PREVIEW) { D = JSON.parse(JSON.stringify(PREVIEW)); setIG(window.BOOKS_PREVIEW_IG); net = 'preview'; return render(); }
   readHash();
   if (!TOKEN) return loginView();
   root.innerHTML = head('Загружаю…');
   try {
     const r = await getFile(FILE); D = r.data; SHA = r.sha;
+    try { setIG((await getFile('instagram.json')).data); } catch (e) { setIG(null); }   // нет файла — нет и списка
     render();
     if (!watching) { watching = true; document.addEventListener('visibilitychange', refresh); }
   } catch (e) {
