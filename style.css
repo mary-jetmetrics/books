@@ -168,7 +168,7 @@ a.tag.ya:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
 .empty { color: var(--ink-muted); font-size: 14px; padding: var(--space-2) 0; }
 .ls-block > .bform:last-child { border-bottom: 0; padding-bottom: 0; }
 
-/* подсказки из планов под названием в «+ Начала читать» */
+/* подсказки из планов под названием в «+ Начала читать» и «+ Прочитанная книга» */
 .hints { display: grid; }
 .hints:empty { display: none; }
 .hints > .cap { padding-left: 2px; }

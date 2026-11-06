@@ -373,8 +373,8 @@ function bookForm(mode, b) {
   const read = status === 'read';
   return `<form class="bform" data-form="${mode}" data-id="${b.id || ''}">
     ${fin ? `<p class="cap">«${esc(b.title)}» — когда дочитала и как оценишь</p>` : ''}
-    ${names ? `<label class="f cap">Название<input type="text" name="title" required value="${esc(b.title || '')}" autocomplete="off"${mode === 'add-now' ? ' id="now-title"' : ''}></label>
-      ${mode === 'add-now' ? '<input type="hidden" name="from" value=""><div class="hints" id="now-hints"></div>' : ''}
+    ${names ? `<label class="f cap">Название<input type="text" name="title" required value="${esc(b.title || '')}" autocomplete="off"${HINTED.includes(mode) ? ' id="hint-title"' : ''}></label>
+      ${HINTED.includes(mode) ? '<input type="hidden" name="from" value=""><div class="hints" id="hint-box"></div>' : ''}
       <label class="f cap">Автор<input type="text" name="author" value="${esc(b.author || '')}" autocomplete="off"></label>` : ''}
     ${fmt ? `<span class="cap">Формат</span>${opts('format', FMTS, b.format || 'audio')}<span class="cap">Язык</span>${opts('lang', LANGS, b.lang || 'ru')}` : ''}
     ${read ? `<label class="f cap">Когда дочитала${yearOnly(b.month) ? ` (записан только год, ${b.month} — можно оставить пустым)` : ''}<input type="month" name="month" ${yearOnly(b.month) ? '' : 'required'} value="${yearOnly(b.month) ? '' : b.month || THIS_MONTH}" max="${THIS_MONTH}"></label>
@@ -384,8 +384,9 @@ function bookForm(mode, b) {
       ${mode === 'edit' ? `<button class="link del" type="button" data-act="del" data-id="${b.id}">${UI.confirm === b.id ? 'Точно удалить?' : 'Удалить'}</button>` : ''}</div>
   </form>`;
 }
-// «+ Начала читать»: название подсказывается из всех планов — свой «Хочу прочитать» первым, дальше BBC, ВШЭ, Инстаграм (Мария, 06.11.26).
+// «+ Начала читать» и «+ Прочитанная книга»: название подсказывается из всех планов — свой «Хочу прочитать» первым, дальше BBC, ВШЭ, Инстаграм (Мария, 06.11.26).
 // Выбрала подсказку — книга из своего списка меняет ту же запись, из BBC, ВШЭ и Инстаграма заводится по строке списка (с кодом аудио)
+const HINTED = ['add-now', 'add-read'];
 const HINT_SRC = { bbc: 'BBC', hse: 'ВШЭ', ig: 'Инстаграм' };
 function planHints(text) {
   const q = norm(text); if (q.length < 2) return [];
@@ -406,12 +407,12 @@ const hintRows = text => planHints(text).map(h => `<button type="button" class="
 function pickHint(el) {
   const f = el.closest('form'); if (!f) return;
   f.elements.title.value = el.dataset.t; f.elements.author.value = el.dataset.a; f.elements.from.value = el.dataset.id;
-  f.querySelector('#now-hints').innerHTML = `<p class="cap">Из планов · ${esc(el.querySelector('.t + .cap').textContent)}</p>`;
+  f.querySelector('#hint-box').innerHTML = `<p class="cap">Из планов · ${esc(el.querySelector('.t + .cap').textContent)}</p>`;
 }
 function saveForm(f) {
   const fd = new FormData(f), mode = f.dataset.form, val = k => (fd.get(k) ?? '').toString().trim();
-  const from = mode === 'add-now' ? val('from') : '';   // книга, выбранная из подсказки планов
-  const b = from ? (from.includes(':') ? refToMine(from, 'reading') : { ...find(from), status: 'reading' })
+  const from = HINTED.includes(mode) ? val('from') : '';   // книга, выбранная из подсказки планов
+  const b = from ? (from.includes(':') ? refToMine(from, ADD[mode]) : { ...find(from), status: ADD[mode] })
     : ADD[mode] ? { id: newId(), status: ADD[mode] } : mode === 'ref-read' ? refToMine(f.dataset.id, 'read') : { ...find(f.dataset.id) };
   if (fd.has('title')) { b.title = val('title'); b.author = val('author'); }
   if (fd.has('format')) { b.format = val('format'); b.lang = val('lang'); }
@@ -472,7 +473,7 @@ root.addEventListener('input', e => {
   if (id === 'bbc-q') { UI.q = e.target.value; if (box('bbc-list')) box('bbc-list').innerHTML = bbcRows(); }
   else if (id === 'hse-q') { UI.hq = e.target.value; if (box('hse-list')) box('hse-list').innerHTML = hseRows(); }
   else if (id === 'ig-q') { UI.gq = e.target.value; if (box('ig-list')) box('ig-list').innerHTML = igRows(); }
-  else if (id === 'now-title') { e.target.form.elements.from.value = ''; if (box('now-hints')) box('now-hints').innerHTML = hintRows(e.target.value); }
+  else if (id === 'hint-title') { e.target.form.elements.from.value = ''; if (box('hint-box')) box('hint-box').innerHTML = hintRows(e.target.value); }
   else if (id === 'all-q') { UI.aq = e.target.value; if (box('all-list')) box('all-list').innerHTML = allRows(LAST); }
 });
 
