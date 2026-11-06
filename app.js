@@ -373,7 +373,8 @@ function bookForm(mode, b) {
   const read = status === 'read';
   return `<form class="bform" data-form="${mode}" data-id="${b.id || ''}">
     ${fin ? `<p class="cap">«${esc(b.title)}» — когда дочитала и как оценишь</p>` : ''}
-    ${names ? `<label class="f cap">Название<input type="text" name="title" required value="${esc(b.title || '')}" autocomplete="off"></label>
+    ${names ? `<label class="f cap">Название<input type="text" name="title" required value="${esc(b.title || '')}" autocomplete="off"${mode === 'add-now' ? ' id="now-title"' : ''}></label>
+      ${mode === 'add-now' ? '<input type="hidden" name="from" value=""><div class="hints" id="now-hints"></div>' : ''}
       <label class="f cap">Автор<input type="text" name="author" value="${esc(b.author || '')}" autocomplete="off"></label>` : ''}
     ${fmt ? `<span class="cap">Формат</span>${opts('format', FMTS, b.format || 'audio')}<span class="cap">Язык</span>${opts('lang', LANGS, b.lang || 'ru')}` : ''}
     ${read ? `<label class="f cap">Когда дочитала${yearOnly(b.month) ? ` (записан только год, ${b.month} — можно оставить пустым)` : ''}<input type="month" name="month" ${yearOnly(b.month) ? '' : 'required'} value="${yearOnly(b.month) ? '' : b.month || THIS_MONTH}" max="${THIS_MONTH}"></label>
@@ -383,9 +384,35 @@ function bookForm(mode, b) {
       ${mode === 'edit' ? `<button class="link del" type="button" data-act="del" data-id="${b.id}">${UI.confirm === b.id ? 'Точно удалить?' : 'Удалить'}</button>` : ''}</div>
   </form>`;
 }
+// «+ Начала читать»: название подсказывается из всех планов — свой «Хочу прочитать» первым, дальше BBC, ВШЭ, Инстаграм (Мария, 06.11.26).
+// Выбрала подсказку — книга из своего списка меняет ту же запись, из BBC, ВШЭ и Инстаграма заводится по строке списка (с кодом аудио)
+const HINT_SRC = { bbc: 'BBC', hse: 'ВШЭ', ig: 'Инстаграм' };
+function planHints(text) {
+  const q = norm(text); if (q.length < 2) return [];
+  const hit = (t, a) => norm(t + ' ' + a).includes(q), first = x => norm(x.t).startsWith(q) ? 0 : 1;
+  const own = byStatus('plan').filter(b => hit(b.title, b.author)).map(b => ({ key: b.id, t: b.title, a: b.author || '', l: 'мой список' }));
+  const seen = new Set(), refs = [];
+  const add = key => {
+    const r = refBook(key); if (!hit(r.t, r.a)) return;
+    const k = norm(r.t) + '|' + norm(r.a); if (seen.has(k) || refMine(r)) return;   // повтор в списках или уже своя (в планах, читаю, прочитано)
+    seen.add(k); refs.push({ key, t: r.t, a: r.a, l: HINT_SRC[r.src] });
+  };
+  BBC.forEach((_, i) => add(`bbc:${i}`)); HSE_ROWS.forEach((_, i) => add(`hse:${i}`)); IG_ROWS.forEach((_, i) => add(`ig:${i}`));
+  const byFirst = (x, y) => first(x) - first(y);
+  return [...own.sort(byFirst), ...refs.sort(byFirst)].slice(0, 6);
+}
+const hintRows = text => planHints(text).map(h => `<button type="button" class="hint" data-act="hint" data-id="${esc(h.key)}" data-t="${esc(h.t)}" data-a="${esc(h.a)}">
+    <span class="t"><span class="name">${esc(h.t)}</span>${h.a ? `<span class="cap">${esc(h.a)}</span>` : ''}</span><span class="cap">${h.l}</span></button>`).join('');
+function pickHint(el) {
+  const f = el.closest('form'); if (!f) return;
+  f.elements.title.value = el.dataset.t; f.elements.author.value = el.dataset.a; f.elements.from.value = el.dataset.id;
+  f.querySelector('#now-hints').innerHTML = `<p class="cap">Из планов · ${esc(el.querySelector('.t + .cap').textContent)}</p>`;
+}
 function saveForm(f) {
   const fd = new FormData(f), mode = f.dataset.form, val = k => (fd.get(k) ?? '').toString().trim();
-  const b = ADD[mode] ? { id: newId(), status: ADD[mode] } : mode === 'ref-read' ? refToMine(f.dataset.id, 'read') : { ...find(f.dataset.id) };
+  const from = mode === 'add-now' ? val('from') : '';   // книга, выбранная из подсказки планов
+  const b = from ? (from.includes(':') ? refToMine(from, 'reading') : { ...find(from), status: 'reading' })
+    : ADD[mode] ? { id: newId(), status: ADD[mode] } : mode === 'ref-read' ? refToMine(f.dataset.id, 'read') : { ...find(f.dataset.id) };
   if (fd.has('title')) { b.title = val('title'); b.author = val('author'); }
   if (fd.has('format')) { b.format = val('format'); b.lang = val('lang'); }
   if (mode === 'finish' || mode === 'ref-read') b.status = 'read';
@@ -402,6 +429,7 @@ root.addEventListener('click', e => {
   if (e.target.closest('a')) return;   // ссылка «аудио ↗» внутри строки открывает Яндекс Книги, строку не раскрывает
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act, id = el.dataset.id, v = el.dataset.v;
+  if (act === 'hint') return pickHint(el);   // без перерисовки: выбранные формат и язык в форме остаются
   if (act === 'tab') { UI.tab = v; LS.set('bk-tab', v); UI.form = null; }
   else if (act === 'year') UI.year = v;
   else if (act === 'cum') { UI.cum = v === '1'; LS.set('bk-cum', v); }
@@ -444,6 +472,7 @@ root.addEventListener('input', e => {
   if (id === 'bbc-q') { UI.q = e.target.value; if (box('bbc-list')) box('bbc-list').innerHTML = bbcRows(); }
   else if (id === 'hse-q') { UI.hq = e.target.value; if (box('hse-list')) box('hse-list').innerHTML = hseRows(); }
   else if (id === 'ig-q') { UI.gq = e.target.value; if (box('ig-list')) box('ig-list').innerHTML = igRows(); }
+  else if (id === 'now-title') { e.target.form.elements.from.value = ''; if (box('now-hints')) box('now-hints').innerHTML = hintRows(e.target.value); }
   else if (id === 'all-q') { UI.aq = e.target.value; if (box('all-list')) box('all-list').innerHTML = allRows(LAST); }
 });
 
