@@ -16,7 +16,7 @@ let D = null, SHA = null;                       // books.json и sha его ве
 let IG = null, IG_ROWS = [], CATALOG = {};
 let saving = false, dirty = false, saveTimer = null, net = 'ok';
 // form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-now' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
-const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, cum: LS.get('bk-cum') === '1', sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', ig: false, gq: '', aq: '', available: false, vq: '' };
+const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, cum: LS.get('bk-cum') === '1', sort: 'month', form: null, confirm: null, bbc: false, hse: false, ig: false, aq: '', available: false, planQuery: '' };
 const root = document.getElementById('root');
 
 /* ---------- общее ---------- */
@@ -286,9 +286,15 @@ const audioTag = id => id ? `<a class="tag t-audio ya" href="https://books.yande
 // все списки на странице — планы: свой «Хочу прочитать», Топ-200 BBC, Лицей ВШЭ и «Из Инстаграма»; книгу из любого начинают читать прямо оттуда (Мария, 03.11.26)
 const removePlanButton = (action, id) => `<button type="button" class="plan-remove" data-act="${action}" data-id="${esc(id)}" aria-label="Убрать из списка" title="Убрать из списка">×</button>`;
 function planView() {
-  const plans = byStatus('plan').sort((a, b) => (a.at || 0) - (b.at || 0));
+  return `<input class="search plan-search" id="plan-q" type="search" aria-label="Поиск по всем спискам" placeholder="Поиск по всем спискам" value="${esc(UI.planQuery)}" autocomplete="off">
+    <div id="plan-lists">${planLists()}</div>`;
+}
+
+function planLists() {
+  const q = norm(UI.planQuery);
+  const plans = byStatus('plan').filter(b => matchPlan(q, b.title, b.author)).sort((a, b) => (a.at || 0) - (b.at || 0));
   const adding = UI.form && UI.form.mode === 'add-plan';
-  return `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">Хочу прочитать</h2>
+  const own = !q || plans.length || adding ? `<section class="ls-block"><div class="sec-top"><h2 class="ls-h">Хочу прочитать</h2>
       <button class="btn small" data-act="add-plan">+ Добавить книгу</button></div>
     <div class="list">${adding ? bookForm('add-plan', {}) : ''}${plans.map(b => {
       const f = UI.form && UI.form.id === b.id ? UI.form.mode : null;
@@ -299,25 +305,30 @@ function planView() {
           <button class="btn small" data-act="finish" data-id="${b.id}">Уже прочитала</button>
           <button class="btn small" data-act="edit" data-id="${b.id}">Править</button></div>` : ''}
         ${f === 'finish' || f === 'edit' ? bookForm(f, b) : ''}`;
-    }).join('') || '<p class="empty">Своих книг пока нет.</p>'}</div></section>
-    <section class="ls-block"><button class="sec-head" data-act="bbc" aria-expanded="${UI.bbc}">
-        <h2 class="ls-h">Топ-200 BBC</h2><span class="cap">${BBC.length} ${plural(BBC.length, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.bbc ? '−' : '+'}</span></button>
-      ${UI.bbc ? `<input class="search" id="bbc-q" type="search" placeholder="Найти в списке" value="${esc(UI.q)}" autocomplete="off">
-        <div class="list" id="bbc-list">${bbcRows()}</div>` : ''}</section>
-    <section class="ls-block"><button class="sec-head" data-act="hse" aria-expanded="${UI.hse}">
-        <h2 class="ls-h">Лицей ВШЭ: на лето</h2><span class="cap">${HSE_N} ${plural(HSE_N, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.hse ? '−' : '+'}</span></button>
-      ${UI.hse ? `<p class="cap">Список литературы на лето для 8–11 классов, <a href="https://school.hse.ru/literature" target="_blank" rel="noopener">school.hse.ru/literature</a></p>
-        <input class="search" id="hse-q" type="search" placeholder="Найти в списке" value="${esc(UI.hq)}" autocomplete="off">
-        <div class="list" id="hse-list">${hseRows()}</div>` : ''}</section>
-    ${IG_ROWS.length ? `<section class="ls-block"><button class="sec-head" data-act="ig" aria-expanded="${UI.ig}">
-        <h2 class="ls-h">Из Инстаграма</h2><span class="cap">${IG_ROWS.length} ${plural(IG_ROWS.length, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.ig ? '−' : '+'}</span></button>
-      ${UI.ig ? `<p class="cap">${esc(IG.about || '')}</p>
-        <input class="search" id="ig-q" type="search" placeholder="Найти в списке" value="${esc(UI.gq)}" autocomplete="off">
-        <div class="list" id="ig-list">${igRows()}</div>` : ''}</section>` : ''}
-    ${CATALOG.available?.length ? `<section class="ls-block"><button class="sec-head" data-act="available" aria-expanded="${UI.available}">
-      <h2 class="ls-h">Книжный сундук</h2><span class="chev">${UI.available ? '−' : '+'}</span></button>
-      ${UI.available ? `<input class="search" id="available-q" type="search" placeholder="Найти в списке" value="${esc(UI.vq)}" autocomplete="off">
-        <div class="list" id="available-list">${availableRows()}</div>` : ''}</section>` : ''}`;
+    }).join('') || '<p class="empty">Своих книг пока нет.</p>'}</div></section>` : '';
+  const available = CATALOG.available || [];
+  const sections = own +
+    planSection('bbc', 'Топ-200 BBC', BBC.length, q, () => flatRows('bbc', BBC, q)) +
+    planSection('hse', 'Лицей ВШЭ: на лето', HSE_N, q, () => hseRows(q),
+      '<p class="cap">Список литературы на лето для 8–11 классов, <a href="https://school.hse.ru/literature" target="_blank" rel="noopener">school.hse.ru/literature</a></p>') +
+    planSection('ig', 'Из Инстаграма', IG_ROWS.length, q, () => flatRows('ig', IG_ROWS, q),
+      IG?.about ? `<p class="cap">${esc(IG.about)}</p>` : '') +
+    planSection('available', 'Книжный сундук', available.filter(x => !isHidden({ ...x, src: 'available', catalogId: x.id })).length,
+      q, () => flatRows('available', available, q), '', available.length > 0);
+  return sections || '<p class="empty">Ничего не нашлось.</p>';
+}
+
+const matchPlan = (query, title, author) => norm(`${title} ${author || ''}`).includes(query);
+
+function planSection(source, title, count, query, renderRows, intro = '', exists = count > 0) {
+  if (!exists) return '';
+  const open = Boolean(query) || UI[source];
+  const rows = open ? renderRows() : '';
+  if (query && !rows) return '';
+  const heading = `<h2 class="ls-h">${title}</h2><span class="cap">${count} ${plural(count, 'книга', 'книги', 'книг')}</span>`;
+  return `<section class="ls-block">${query ? `<div class="sec-head">${heading}</div>` :
+    `<button class="sec-head" data-act="${source}" aria-expanded="${open}">${heading}<span class="chev">${open ? '−' : '+'}</span></button>`}
+    ${open ? `${query ? '' : intro}<div class="list">${rows || '<p class="empty">Список пуст.</p>'}</div>` : ''}</section>`;
 }
 // «Из Инстаграма»: сплошной список, у каждой книги тихая ссылка «пост ↗» на её пост (Мария, 03.11.26: вариант 1, «не плашкой, а более лайтово»;
 // подписи постов над группами были непонятно к чему)
@@ -325,31 +336,26 @@ function setIG(data) {
   IG = data && data.posts ? data : null;
   IG_ROWS = IG ? IG.posts.flatMap(p => p.books.map(([t, a, audio]) => ({ t, a: a || '', audio: audio || '', p }))) : [];
 }
-function flatRows(source, rows, query) {
-  const q = norm(query);
+function flatRows(source, rows, q) {
   return rows.map((x, i) => {
     const key = `${source}:${i}`;
     const r = refBook(key);
-    return !isHidden(r) && (!q || norm(r.t + ' ' + r.a).includes(q)) ? refRow(key, r) : '';
-  }).join('') || '<p class="empty">Ничего не нашлось.</p>';
+    return !isHidden(r) && matchPlan(q, r.t, r.a) ? refRow(key, r) : '';
+  }).join('');
 }
-const igRows = () => flatRows('ig', IG_ROWS, UI.gq);
-const availableRows = () => flatRows('available', CATALOG.available || [], UI.vq);
 // справочник ВШЭ (hse.js): классы → подразделы → книги [название, автор, заметка]; строки по порядку сайта
 const HSE_ROWS = (typeof HSE === 'undefined' ? [] : HSE).flatMap(g => g.parts.flatMap(p => p.books.map(([t, a, n]) => ({ t, a, n: n || '', g: g.grade, p: p.title }))));
 const HSE_N = new Set(HSE_ROWS.map(x => x.t + '|' + x.a)).size;
-function hseRows() {
-  const q = norm(UI.hq);
+function hseRows(q) {
   let g0 = null, p0 = null, out = '';
   HSE_ROWS.forEach((x, i) => {
-    if (isHidden({ ...x, src: 'hse' }) || (q && !norm(x.t + ' ' + x.a).includes(q))) return;
+    if (isHidden({ ...x, src: 'hse' }) || !matchPlan(q, x.t, x.a)) return;
     if (x.g !== g0) { g0 = x.g; p0 = null; out += `<h3 class="grade">${esc(x.g)}</h3>`; }
     if (x.p !== p0) { p0 = x.p; out += `<p class="cap part">${esc(x.p)}</p>`; }
     out += refRow(`hse:${i}`);
   });
-  return out || '<p class="empty">Ничего не нашлось.</p>';
+  return out;
 }
-const bbcRows = () => flatRows('bbc', BBC, UI.q);
 // книга списка по ключу строки «bbc:номер» / «hse:номер» / «ig:номер»; у Марии она уже есть — прочитана, читается или в своём списке
 function refBook(key) {
   const [s, i] = key.split(':');
@@ -521,10 +527,11 @@ root.addEventListener('submit', e => {
 // поиск перерисовывает только свой список, чтобы поле не теряло фокус
 root.addEventListener('input', e => {
   const id = e.target.id, box = id => document.getElementById(id);
-  if (id === 'bbc-q') { UI.q = e.target.value; if (box('bbc-list')) box('bbc-list').innerHTML = bbcRows(); }
-  else if (id === 'hse-q') { UI.hq = e.target.value; if (box('hse-list')) box('hse-list').innerHTML = hseRows(); }
-  else if (id === 'available-q') { UI.vq = e.target.value; if (box('available-list')) box('available-list').innerHTML = availableRows(); }
-  else if (id === 'ig-q') { UI.gq = e.target.value; if (box('ig-list')) box('ig-list').innerHTML = igRows(); }
+  if (id === 'plan-q') {
+    UI.planQuery = e.target.value;
+    UI.form = null; UI.confirm = null;
+    box('plan-lists').innerHTML = planLists();
+  }
   else if (id === 'hint-title') { e.target.form.elements.from.value = ''; if (box('hint-box')) box('hint-box').innerHTML = hintRows(e.target.value); }
   else if (id === 'all-q') { UI.aq = e.target.value; if (box('all-list')) box('all-list').innerHTML = allRows(LAST); }
 });
