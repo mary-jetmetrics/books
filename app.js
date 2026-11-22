@@ -13,10 +13,10 @@ const PREVIEW = window.BOOKS_PREVIEW || null;   // превью в артефа�
 let TOKEN = LS.get('bk-token') || LS.get('trips-token');
 let D = null, SHA = null;                       // books.json и sha его версии
 // список «Из Инстаграма» — instagram.json в том же закрытом репозитории (личная подборка, не в открытом коде): посты → книги [название, автор, аудио]
-let IG = null, IG_ROWS = [];
+let IG = null, IG_ROWS = [], CATALOG = {};
 let saving = false, dirty = false, saveTimer = null, net = 'ok';
 // form: открытая форма — { mode: 'edit' | 'finish' | 'add-read' | 'add-now' | 'add-plan' | 'pact', id }; confirm — id книги, которую спросили «Точно удалить?»
-const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, cum: LS.get('bk-cum') === '1', sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', ig: false, gq: '', aq: '' };
+const UI = { tab: LS.get('bk-tab') === 'plan' ? 'plan' : 'read', year: null, cum: LS.get('bk-cum') === '1', sort: 'month', form: null, confirm: null, bbc: false, q: '', hse: false, hq: '', ig: false, gq: '', aq: '', available: false, vq: '' };
 const root = document.getElementById('root');
 
 /* ---------- общее ---------- */
@@ -60,7 +60,11 @@ async function putFile(file, data, sha, message) {
 function merge(a, b) {
   const m = new Map(a.books.map(x => [x.id, x]));
   for (const x of b.books) { const y = m.get(x.id); if (!y || (x.at || 0) > (y.at || 0)) m.set(x.id, x); }
-  return { ...a, books: [...m.values()] };
+  const hiddenPlans = { ...a.hiddenPlans };
+  for (const [key, at] of Object.entries(b.hiddenPlans || {})) {
+    hiddenPlans[key] = Math.max(hiddenPlans[key] || 0, at);
+  }
+  return { ...a, books: [...m.values()], hiddenPlans };
 }
 function queueSave() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); }
 async function save() {
@@ -267,13 +271,20 @@ function mine(title, author) {
     return !b.author || surnames(b.author).some(w => as.includes(w));
   });
 }
-const STATE = { read: 'прочитано', reading: 'читаю' };
+const planKey = (t, a) => norm(t) + '|' + norm(a);
+const refKey = r => r.src + ':' + (r.catalogId ?? planKey(r.t, r.a));
+const isHidden = r => Boolean(D.hiddenPlans?.[refKey(r)]);
+function liveLibLink(t, a, url = CATALOG.links?.[planKey(t, a)]) {
+  return /^https:\/\/(?:www\.|l\.|alt\.)?livelib\.ru\/(?:book|work)\/[0-9]/.test(url || '')
+    ? `<a class="plink" href="${esc(url)}" target="_blank" rel="noopener" title="Открыть карточку на LiveLib" aria-label="Открыть карточку на LiveLib">↗</a>` : '';
+}
 // аудиокнига в Яндекс Книгах: у своих книг — поле audio в books.json, у списков BBC и ВШЭ — audio.js (ключ «название|автор»)
 const AUDIO_MAP = typeof AUDIO === 'undefined' ? {} : AUDIO;
 const audioOf = (t, a, own) => (own && own.audio) || AUDIO_MAP[t + '|' + a] || '';
 const audioTag = id => id ? `<a class="tag t-audio ya" href="https://books.yandex.ru/audiobooks/${esc(id)}" target="_blank" rel="noopener" title="Слушать в Яндекс Книгах">аудио ↗</a>` : '';
 
 // все списки на странице — планы: свой «Хочу прочитать», Топ-200 BBC, Лицей ВШЭ и «Из Инстаграма»; книгу из любого начинают читать прямо оттуда (Мария, 03.11.26)
+const removePlanButton = (action, id) => `<button type="button" class="plan-remove" data-act="${action}" data-id="${esc(id)}" aria-label="Убрать из списка" title="Убрать из списка">×</button>`;
 function planView() {
   const plans = byStatus('plan').sort((a, b) => (a.at || 0) - (b.at || 0));
   const adding = UI.form && UI.form.mode === 'add-plan';
@@ -281,13 +292,12 @@ function planView() {
       <button class="btn small" data-act="add-plan">+ Добавить книгу</button></div>
     <div class="list">${adding ? bookForm('add-plan', {}) : ''}${plans.map(b => {
       const f = UI.form && UI.form.id === b.id ? UI.form.mode : null;
-      return `<div class="row" role="button" tabindex="0" data-act="popen" data-id="${b.id}" aria-expanded="${!!f}">
+      return `<div class="row plan-row" role="button" tabindex="0" data-act="popen" data-id="${b.id}" aria-expanded="${!!f}">
         <span class="t"><span class="name">${esc(b.title)}</span>${b.author ? `<span class="cap">${esc(b.author)}</span>` : ''}</span>
-        <span class="meta">${audioTag(audioOf(b.title, b.author, b))}${b.src === 'bbc' ? '<span class="tag white">BBC</span>' : b.src === 'hse' ? '<span class="tag white">ВШЭ</span>' : ''}</span></div>
+        <span class="meta">${audioTag(audioOf(b.title, b.author, b))}${liveLibLink(b.title, b.author, b.ll || undefined)}${b.src === 'bbc' ? '<span class="tag white">BBC</span>' : b.src === 'hse' ? '<span class="tag white">ВШЭ</span>' : ''}${removePlanButton('pdel', b.id)}</span></div>
         ${f === 'pact' ? `<div class="pacts"><button class="btn small main" data-act="start" data-id="${b.id}">Начать читать</button>
           <button class="btn small" data-act="finish" data-id="${b.id}">Уже прочитала</button>
-          <button class="btn small" data-act="edit" data-id="${b.id}">Править</button>
-          <button class="link del" data-act="del" data-id="${b.id}">${UI.confirm === b.id ? 'Точно убрать?' : 'Убрать'}</button></div>` : ''}
+          <button class="btn small" data-act="edit" data-id="${b.id}">Править</button></div>` : ''}
         ${f === 'finish' || f === 'edit' ? bookForm(f, b) : ''}`;
     }).join('') || '<p class="empty">Своих книг пока нет.</p>'}</div></section>
     <section class="ls-block"><button class="sec-head" data-act="bbc" aria-expanded="${UI.bbc}">
@@ -303,7 +313,11 @@ function planView() {
         <h2 class="ls-h">Из Инстаграма</h2><span class="cap">${IG_ROWS.length} ${plural(IG_ROWS.length, 'книга', 'книги', 'книг')}</span><span class="chev">${UI.ig ? '−' : '+'}</span></button>
       ${UI.ig ? `<p class="cap">${esc(IG.about || '')}</p>
         <input class="search" id="ig-q" type="search" placeholder="Найти в списке" value="${esc(UI.gq)}" autocomplete="off">
-        <div class="list" id="ig-list">${igRows()}</div>` : ''}</section>` : ''}`;
+        <div class="list" id="ig-list">${igRows()}</div>` : ''}</section>` : ''}
+    ${CATALOG.available?.length ? `<section class="ls-block"><button class="sec-head" data-act="available" aria-expanded="${UI.available}">
+      <h2 class="ls-h">Книжный сундук</h2><span class="chev">${UI.available ? '−' : '+'}</span></button>
+      ${UI.available ? `<input class="search" id="available-q" type="search" placeholder="Найти в списке" value="${esc(UI.vq)}" autocomplete="off">
+        <div class="list" id="available-list">${availableRows()}</div>` : ''}</section>` : ''}`;
 }
 // «Из Инстаграма»: сплошной список, у каждой книги тихая ссылка «пост ↗» на её пост (Мария, 03.11.26: вариант 1, «не плашкой, а более лайтово»;
 // подписи постов над группами были непонятно к чему)
@@ -311,11 +325,16 @@ function setIG(data) {
   IG = data && data.posts ? data : null;
   IG_ROWS = IG ? IG.posts.flatMap(p => p.books.map(([t, a, audio]) => ({ t, a: a || '', audio: audio || '', p }))) : [];
 }
-function igRows() {
-  const q = norm(UI.gq);
-  return IG_ROWS.map((x, i) => [x, i]).filter(([x]) => !q || norm(x.t + ' ' + x.a).includes(q))
-    .map(([, i]) => refRow(`ig:${i}`)).join('') || '<p class="empty">Ничего не нашлось.</p>';
+function flatRows(source, rows, query) {
+  const q = norm(query);
+  return rows.map((x, i) => {
+    const key = `${source}:${i}`;
+    const r = refBook(key);
+    return !isHidden(r) && (!q || norm(r.t + ' ' + r.a).includes(q)) ? refRow(key, r) : '';
+  }).join('') || '<p class="empty">Ничего не нашлось.</p>';
 }
+const igRows = () => flatRows('ig', IG_ROWS, UI.gq);
+const availableRows = () => flatRows('available', CATALOG.available || [], UI.vq);
 // справочник ВШЭ (hse.js): классы → подразделы → книги [название, автор, заметка]; строки по порядку сайта
 const HSE_ROWS = (typeof HSE === 'undefined' ? [] : HSE).flatMap(g => g.parts.flatMap(p => p.books.map(([t, a, n]) => ({ t, a, n: n || '', g: g.grade, p: p.title }))));
 const HSE_N = new Set(HSE_ROWS.map(x => x.t + '|' + x.a)).size;
@@ -323,41 +342,39 @@ function hseRows() {
   const q = norm(UI.hq);
   let g0 = null, p0 = null, out = '';
   HSE_ROWS.forEach((x, i) => {
-    if (q && !norm(x.t + ' ' + x.a).includes(q)) return;
+    if (isHidden({ ...x, src: 'hse' }) || (q && !norm(x.t + ' ' + x.a).includes(q))) return;
     if (x.g !== g0) { g0 = x.g; p0 = null; out += `<h3 class="grade">${esc(x.g)}</h3>`; }
     if (x.p !== p0) { p0 = x.p; out += `<p class="cap part">${esc(x.p)}</p>`; }
     out += refRow(`hse:${i}`);
   });
   return out || '<p class="empty">Ничего не нашлось.</p>';
 }
-function bbcRows() {
-  const q = norm(UI.q);
-  return BBC.map((x, i) => [x, i]).filter(([[t, a]]) => !q || norm(t + ' ' + a).includes(q))
-    .map(([, i]) => refRow(`bbc:${i}`)).join('') || '<p class="empty">Ничего не нашлось.</p>';
-}
+const bbcRows = () => flatRows('bbc', BBC, UI.q);
 // книга списка по ключу строки «bbc:номер» / «hse:номер» / «ig:номер»; у Марии она уже есть — прочитана, читается или в своём списке
 function refBook(key) {
   const [s, i] = key.split(':');
   if (s === 'bbc') { const [t, a] = BBC[+i]; return { t, a, n: '', src: s }; }
   if (s === 'ig') { const x = IG_ROWS[+i]; return { t: x.t, a: x.a, n: '', src: s, audio: x.audio, url: x.p.url }; }
+  if (s === 'available') { const x = CATALOG.available[+i]; return { ...x, src: s, catalogId: x.id }; }
   const x = HSE_ROWS[+i]; return { t: x.t, a: x.a, n: x.n, src: s };
 }
 const refMine = r => mine(r.t, r.src === 'bbc' ? undefined : r.a || undefined);
-// прочитанное и начатое — с меткой, остальное нажимается: «Начать читать» или «Уже прочитала»
-function refRow(key) {
-  const r = refBook(key), m = refMine(r), done = m && STATE[m.status];
+// Прочитанное подсвечено, у начатого остаётся метка. Любую строку можно убрать из её списка.
+function refRow(key, r = refBook(key)) {
+  const m = refMine(r), read = m?.status === 'read', reading = m?.status === 'reading';
+  const done = read || reading;
   const f = UI.form && UI.form.id === key ? UI.form.mode : null;
-  return `<div class="row${done ? ' static' : ''}"${done ? '' : ` role="button" tabindex="0" data-act="ropen" data-id="${key}" aria-expanded="${!!f}"`}>
+  return `<div class="row plan-row${read ? ' plan-read' : ''}" ${done ? '' : `role="button" tabindex="0" data-act="ropen" data-id="${key}" aria-expanded="${!!f}"`}>
       <span class="t"><span class="name">${esc(r.t)}</span><span class="cap">${esc(r.a)}${r.n ? ' · ' + esc(r.n) : ''}</span></span>
-      <span class="meta">${audioTag(r.audio || audioOf(r.t, r.a, m))}${r.url ? `<a class="plink" href="${esc(r.url)}" target="_blank" rel="noopener" title="Открыть пост в Инстаграме">пост ↗</a>` : ''}${done ? `<span class="tag${m.status === 'read' ? '' : ' white'}">${STATE[m.status]}</span>` : ''}</span></div>
-    ${f === 'ract' ? `<div class="pacts"><button class="btn small main" data-act="rstart" data-id="${key}">Начать читать</button>
+      <span class="meta">${audioTag(r.audio || audioOf(r.t, r.a, m))}${r.url ? `<a class="plink" href="${esc(r.url)}" target="_blank" rel="noopener" title="Открыть пост в Инстаграме">пост ↗</a>` : ''}${liveLibLink(r.t, r.a, r.ll || undefined)}${reading ? '<span class="tag white">читаю</span>' : ''}${read ? '<span class="sr-only">прочитано</span>' : ''}${removePlanButton('rdel', key)}</span></div>
+    ${f === 'ract' && !done ? `<div class="pacts"><button class="btn small main" data-act="rstart" data-id="${key}">Начать читать</button>
       <button class="btn small" data-act="rfinish" data-id="${key}">Уже прочитала</button></div>` : ''}
     ${f === 'ref-read' ? bookForm('ref-read', { id: key, title: r.t, author: r.a }) : ''}`;
 }
 // книга из списка становится своей: если она уже в «Хочу прочитать» — меняется та же запись, иначе заводится новая
 function refToMine(key, status) {
   const r = refBook(key), m = refMine(r), audio = r.audio || audioOf(r.t, r.a, m);
-  return m ? { ...m, status } : { id: newId(), title: r.t, author: r.a, status, src: r.src, ...(audio ? { audio } : {}) };
+  return m ? { ...m, status } : { id: newId(), title: r.t, author: r.a, status, src: r.src, ...(audio ? { audio } : {}), ...(r.ll ? { ll: r.ll } : {}) };
 }
 
 /* ---------- форма книги ---------- */
@@ -387,18 +404,19 @@ function bookForm(mode, b) {
 // «+ Начала читать» и «+ Прочитанная книга»: название подсказывается из всех планов — свой «Хочу прочитать» первым, дальше BBC, ВШЭ, Инстаграм (Мария, 06.11.26).
 // Выбрала подсказку — книга из своего списка меняет ту же запись, из BBC, ВШЭ и Инстаграма заводится по строке списка (с кодом аудио)
 const HINTED = ['add-now', 'add-read'];
-const HINT_SRC = { bbc: 'BBC', hse: 'ВШЭ', ig: 'Инстаграм' };
+const HINT_SRC = { bbc: 'BBC', hse: 'ВШЭ', ig: 'Инстаграм', available: 'Книжный сундук' };
 function planHints(text) {
   const q = norm(text); if (q.length < 2) return [];
   const hit = (t, a) => norm(t + ' ' + a).includes(q), first = x => norm(x.t).startsWith(q) ? 0 : 1;
   const own = byStatus('plan').filter(b => hit(b.title, b.author)).map(b => ({ key: b.id, t: b.title, a: b.author || '', l: 'мой список' }));
   const seen = new Set(), refs = [];
   const add = key => {
-    const r = refBook(key); if (!hit(r.t, r.a)) return;
+    const r = refBook(key); if (isHidden(r) || !hit(r.t, r.a)) return;
     const k = norm(r.t) + '|' + norm(r.a); if (seen.has(k) || refMine(r)) return;   // повтор в списках или уже своя (в планах, читаю, прочитано)
     seen.add(k); refs.push({ key, t: r.t, a: r.a, l: HINT_SRC[r.src] });
   };
   BBC.forEach((_, i) => add(`bbc:${i}`)); HSE_ROWS.forEach((_, i) => add(`hse:${i}`)); IG_ROWS.forEach((_, i) => add(`ig:${i}`));
+  (CATALOG.available || []).forEach((_, i) => add(`available:${i}`));
   const byFirst = (x, y) => first(x) - first(y);
   return [...own.sort(byFirst), ...refs.sort(byFirst)].slice(0, 6);
 }
@@ -414,7 +432,10 @@ function saveForm(f) {
   const from = HINTED.includes(mode) ? val('from') : '';   // книга, выбранная из подсказки планов
   const b = from ? (from.includes(':') ? refToMine(from, ADD[mode]) : { ...find(from), status: ADD[mode] })
     : ADD[mode] ? { id: newId(), status: ADD[mode] } : mode === 'ref-read' ? refToMine(f.dataset.id, 'read') : { ...find(f.dataset.id) };
-  if (fd.has('title')) { b.title = val('title'); b.author = val('author'); }
+  if (fd.has('title')) {
+    if (mode === 'edit' && planKey(b.title, b.author) !== planKey(val('title'), val('author'))) delete b.ll;
+    b.title = val('title'); b.author = val('author');
+  }
   if (fd.has('format')) { b.format = val('format'); b.lang = val('lang'); }
   if (mode === 'finish' || mode === 'ref-read') b.status = 'read';
   if (fd.has('month')) { b.month = val('month') || (yearOnly(b.month) ? b.month : ''); b.rating = +val('rating') || null; }
@@ -447,6 +468,15 @@ root.addEventListener('click', e => {
   else if (act === 'cancel') { UI.form = null; UI.confirm = null; }
   else if (act === 'bbc') UI.bbc = !UI.bbc;
   else if (act === 'hse') UI.hse = !UI.hse;
+  else if (act === 'available') UI.available = !UI.available;
+  else if (act === 'pdel' || act === 'rdel') {
+    if (act === 'pdel') upsert({ ...find(id), del: true });
+    else {
+      (D.hiddenPlans ||= {})[refKey(refBook(id))] = Date.now();
+      queueSave();
+    }
+    UI.form = null; UI.confirm = null;
+  }
   else if (act === 'ig') UI.ig = !UI.ig;
   else if (act === 'ropen') { UI.form = UI.form && UI.form.id === id ? null : { mode: 'ract', id }; UI.confirm = null; }
   else if (act === 'rstart') { const b = refToMine(id, 'reading'); b.format = b.format || 'audio'; b.lang = b.lang || 'ru'; upsert(b); UI.form = null; }
@@ -455,6 +485,27 @@ root.addEventListener('click', e => {
   else return;
   render();
 });
+// Свайп влево на сенсорном экране убирает строку. Вертикальная прокрутка остаётся обычной.
+let swipe = null;
+root.addEventListener('touchstart', e => {
+  const row = e.target.closest('.plan-row');
+  const touch = e.touches[0];
+  swipe = row && e.touches.length === 1 && !e.target.closest('a, button')
+    ? { row, id: touch.identifier, x: touch.clientX, y: touch.clientY } : null;
+}, { passive: true });
+root.addEventListener('touchcancel', () => { swipe = null; });
+root.addEventListener('touchend', e => {
+  const start = swipe;
+  swipe = null;
+  if (!start) return;
+  const touch = Array.from(e.changedTouches).find(t => t.identifier === start.id);
+  if (!touch) return;
+  const left = start.x - touch.clientX;
+  if (left >= 70 && left > 2 * Math.abs(start.y - touch.clientY)) {
+    e.preventDefault();
+    start.row.querySelector('.plan-remove')?.click();
+  }
+}, { passive: false });
 // строки-кнопки (div с role="button": внутри ссылка, в <button> её класть нельзя) — с клавиатуры тоже
 root.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"]')) { e.preventDefault(); e.target.click(); }
@@ -472,6 +523,7 @@ root.addEventListener('input', e => {
   const id = e.target.id, box = id => document.getElementById(id);
   if (id === 'bbc-q') { UI.q = e.target.value; if (box('bbc-list')) box('bbc-list').innerHTML = bbcRows(); }
   else if (id === 'hse-q') { UI.hq = e.target.value; if (box('hse-list')) box('hse-list').innerHTML = hseRows(); }
+  else if (id === 'available-q') { UI.vq = e.target.value; if (box('available-list')) box('available-list').innerHTML = availableRows(); }
   else if (id === 'ig-q') { UI.gq = e.target.value; if (box('ig-list')) box('ig-list').innerHTML = igRows(); }
   else if (id === 'hint-title') { e.target.form.elements.from.value = ''; if (box('hint-box')) box('hint-box').innerHTML = hintRows(e.target.value); }
   else if (id === 'all-q') { UI.aq = e.target.value; if (box('all-list')) box('all-list').innerHTML = allRows(LAST); }
@@ -494,13 +546,15 @@ function readHash() {
 }
 let watching = false;
 async function boot() {
-  if (PREVIEW) { D = JSON.parse(JSON.stringify(PREVIEW)); setIG(window.BOOKS_PREVIEW_IG); net = 'preview'; return render(); }
+  if (PREVIEW) { D = JSON.parse(JSON.stringify(PREVIEW)); setIG(window.BOOKS_PREVIEW_IG); CATALOG = window.BOOKS_PREVIEW_CATALOG || {}; net = 'preview'; return render(); }
   readHash();
   if (!TOKEN) return loginView();
   root.innerHTML = head('Загружаю…');
   try {
     const r = await getFile(FILE); D = r.data; SHA = r.sha;
-    try { setIG((await getFile('instagram.json')).data); } catch (e) { setIG(null); }   // нет файла — нет и списка
+    const [ig, catalog] = await Promise.allSettled([getFile('instagram.json'), getFile('plan-catalog.json')]);
+    setIG(ig.value?.data);
+    CATALOG = catalog.value?.data || {};
     render();
     if (!watching) { watching = true; document.addEventListener('visibilitychange', refresh); }
   } catch (e) {
